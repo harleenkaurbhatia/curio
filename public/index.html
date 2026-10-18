@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0b0f">
+  <title>Curio</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <!-- Passcode -->
+  <section id="login" class="screen center" hidden>
+    <div class="brand big">Curio</div>
+    <p class="muted">Only the good stuff.</p>
+    <form id="login-form">
+      <input id="passcode" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Passcode" aria-label="Passcode" required>
+      <button type="submit">Unlock</button>
+      <p id="login-error" class="error" role="alert"></p>
+    </form>
+  </section>
+
+  <!-- Feed -->
+  <section id="feed-screen" class="screen" hidden>
+    <div id="player-wrap" aria-hidden="true"><div id="player"></div></div>
+    <div id="feed" aria-label="Video feed"></div>
+    <header class="topbar">
+      <span class="brand">Curio</span>
+      <button id="open-menu" class="icon-btn" aria-label="Topics and creators">☰</button>
+    </header>
+    <div id="sound-hint" class="pill" hidden>Tap for sound</div>
+  </section>
+
+  <!-- Topics & creators -->
+  <section id="menu" class="screen sheet" hidden>
+    <header class="sheet-head">
+      <nav class="tabs" role="tablist">
+        <button role="tab" data-tab="topics" aria-selected="true">Topics</button>
+        <button role="tab" data-tab="creators" aria-selected="false">Creators</button>
+      </nav>
+      <button id="close-menu" class="icon-btn" aria-label="Close">✕</button>
+    </header>
+    <div id="tab-topics" class="tab-body">
+      <form id="add-topic" class="row">
+        <input id="topic-name" placeholder="Add a topic, e.g. Space" maxlength="60" required aria-label="New topic">
+        <select id="topic-mode" aria-label="Mode">
+          <option value="learn">Learn</option>
+          <option value="catchup">Catch up</option>
+          <option value="unwind">Unwind</option>
+        </select>
+        <button type="submit">Add</button>
+      </form>
+      <ul id="topic-list" class="list"></ul>
+    </div>
+    <div id="tab-creators" class="tab-body" hidden>
+      <p class="muted small">Found and vetted automatically. Remove any you don't want.</p>
+      <div id="creator-list"></div>
+    </div>
+  </section>
+
+  <script src="/app.js" type="module"></script>
+</body>
+</html>
