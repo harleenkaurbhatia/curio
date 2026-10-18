@@ -2,7 +2,7 @@
 // Usage: node scripts/sprite.mjs <path-to-lucide-static/icons>
 import { readFileSync, writeFileSync } from 'node:fs';
 const ICONS = ['heart', 'thumbs-down', 'message-circle', 'send', 'bookmark', 'clock', 'house', 'library', 'chart-column',
-  'circle-user-round', 'mic', 'x', 'plus', 'external-link', 'volume-x', 'volume-2', 'sparkles', 'sprout', 'copy', 'play', 'link', 'pause'];
+  'circle-user-round', 'mic', 'x', 'plus', 'external-link', 'volume-x', 'volume-2', 'sparkles', 'sprout', 'copy', 'play', 'link', 'pause', 'arrow-left', 'instagram'];
 const dir = process.argv[2];
 const symbols = ICONS.map((n) => {
   const svg = readFileSync(`${dir}/${n}.svg`, 'utf8');

@@ -1,3 +1,4 @@
+import type { InboxItem } from './core/instagram';
 import type { Candidate, Weights } from './core/ranking';
 import type { View } from './core/insights';
 import type { RawPost } from './core/sources';
@@ -18,6 +19,8 @@ export type Feed = {
   score: number | null; reason: string | null; status: 'pending' | 'active' | 'rejected'; meta: string;
   discovered_at: number; last_fetched_at: number | null;
 };
+export type IgAccount = { ig_id: string; user_id: number; username: string | null; token: string; token_refreshed_at: number };
+export type IgSender = { ig_id: string; name: string | null; username: string | null; pic: string | null; fetched_at: number };
 export type NewVideo = { id: string; channel_id: string; topic_id: number; title: string; published_at: number; duration_s: number; vertical: boolean };
 export type FeedItem = Candidate & {
   kind: 'video' | 'post'; title: string; source: string; topicName: string; url: string; vertical?: boolean;
@@ -46,6 +49,53 @@ export class Repo {
   async setLogin(id: number, email: string, name: string, passwordHash: string) {
     await this.db.prepare('UPDATE users SET email = ?, name = ?, password_hash = ? WHERE id = ?').bind(email, name, passwordHash, id).run();
   }
+  // ---- Instagram inbox ----
+  async igAccountFor(userId: number) {
+    return this.db.prepare('SELECT ig_id, username FROM ig_accounts WHERE user_id = ?').bind(userId).first<{ ig_id: string; username: string | null }>();
+  }
+  async igAccount(igId: string) {
+    return this.db.prepare('SELECT * FROM ig_accounts WHERE ig_id = ?').bind(igId).first<IgAccount>();
+  }
+  async igAccountsToRefresh(before: number) {
+    return (await this.db.prepare('SELECT * FROM ig_accounts WHERE token_refreshed_at < ?').bind(before).all<IgAccount>()).results;
+  }
+  async saveIgAccount(a: IgAccount) {
+    await this.db.batch([
+      this.db.prepare('DELETE FROM ig_accounts WHERE user_id = ? OR ig_id = ?').bind(a.user_id, a.ig_id),
+      this.db.prepare('INSERT INTO ig_accounts (ig_id, user_id, username, token, token_refreshed_at) VALUES (?, ?, ?, ?, ?)')
+        .bind(a.ig_id, a.user_id, a.username, a.token, a.token_refreshed_at),
+    ]);
+  }
+  async removeIgAccount(userId: number) {
+    await this.db.prepare('DELETE FROM ig_accounts WHERE user_id = ?').bind(userId).run();
+  }
+  async igSender(igId: string) {
+    return this.db.prepare('SELECT * FROM ig_senders WHERE ig_id = ?').bind(igId).first<IgSender>();
+  }
+  async saveIgSender(s: IgSender) {
+    await this.db.prepare('INSERT OR REPLACE INTO ig_senders (ig_id, name, username, pic, fetched_at) VALUES (?, ?, ?, ?, ?)')
+      .bind(s.ig_id, s.name, s.username, s.pic, s.fetched_at).run();
+  }
+  async addInbox(userId: number, items: InboxItem[]) {
+    if (!items.length) return;
+    await this.db.batch(items.map((i) => this.db
+      .prepare(`INSERT OR IGNORE INTO inbox (id, user_id, sender_ig_id, kind, media_url, title, media_id, link, text, at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(i.id, userId, i.senderIgId, i.kind, i.mediaUrl, i.title, i.mediaId, i.link, i.text, i.at)));
+  }
+  async inbox(userId: number) {
+    return (await this.db.prepare(`SELECT i.*, s.name AS sender_name, s.username AS sender_username, s.pic AS sender_pic
+                                   FROM inbox i LEFT JOIN ig_senders s ON s.ig_id = i.sender_ig_id
+                                   WHERE i.user_id = ? ORDER BY i.at DESC LIMIT 100`).bind(userId).all<any>()).results;
+  }
+  async inboxUnread(userId: number) {
+    return (await this.db.prepare('SELECT COUNT(*) AS n FROM inbox WHERE user_id = ? AND seen = 0').bind(userId).first<{ n: number }>())?.n ?? 0;
+  }
+  async markInboxSeen(userId: number, ids: string[]) {
+    if (!ids.length) return;
+    await this.db.batch(ids.slice(0, 100).map((id) => this.db.prepare('UPDATE inbox SET seen = 1 WHERE user_id = ? AND id = ?').bind(userId, id)));
+  }
+
   async createSession(tokenHash: string, userId: number, expiresAt: number) {
     await this.db.prepare('INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)')
       .bind(tokenHash, userId, expiresAt, Date.now()).run();
@@ -70,7 +120,7 @@ export class Repo {
   }
   async deleteUser(id: number) {
     // Child rows go via ON DELETE CASCADE where enforced; delete explicitly too, since D1 may not enforce FKs.
-    await this.db.batch(['sessions', 'user_topics', 'user_blocks', 'views', 'feedback', 'weights', 'saves', 'notes']
+    await this.db.batch(['sessions', 'user_topics', 'user_blocks', 'views', 'feedback', 'weights', 'saves', 'notes', 'inbox', 'ig_accounts']
       .map((t) => this.db.prepare(`DELETE FROM ${t} WHERE user_id = ?`).bind(id))
       .concat(this.db.prepare('DELETE FROM users WHERE id = ?').bind(id)));
   }

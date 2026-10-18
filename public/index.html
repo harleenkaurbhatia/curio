@@ -57,7 +57,10 @@
       <div id="feed" aria-label="Feed"></div>
       <header class="topbar">
         <span class="brand">Curio</span>
-        <button id="done-btn" class="pill-btn">Done for now</button>
+        <span class="row">
+          <button id="done-btn" class="pill-btn">Done for now</button>
+          <button id="inbox-btn" class="icon-btn badge-host" aria-label="Reels sent to you on Instagram"><svg class="ic" aria-hidden="true"><use href="/icons.svg#send"/></svg><span id="inbox-badge" class="badge-dot" hidden></span></button>
+        </span>
       </header>
       <div id="sound-hint" class="pill with-icon" hidden><svg class="ic sm" aria-hidden="true"><use href="/icons.svg#volume-x"/></svg>Tap for sound</div>
     </section>
@@ -111,6 +114,9 @@
         <p id="topic-error" class="error" role="alert"></p>
         <ul id="topic-list" class="list"></ul>
 
+        <h2 class="section-title">Instagram</h2>
+        <div id="ig-box"></div>
+
         <h2 class="section-title">Creators & sources</h2>
         <p class="muted small">Found and vetted automatically. Hide any you don't want.</p>
         <div id="creator-list"></div>
@@ -132,6 +138,16 @@
       <button data-view="profile" aria-label="You"><svg class="ic" aria-hidden="true"><use href="/icons.svg#circle-user-round"/></svg></button>
     </nav>
   </div>
+
+  <!-- ===== Reels people sent you on Instagram ===== -->
+  <section id="inbox" class="screen" hidden aria-label="Sent to you">
+    <header class="topbar">
+      <button id="inbox-back" class="icon-btn" aria-label="Back"><svg class="ic" aria-hidden="true"><use href="/icons.svg#arrow-left"/></svg></button>
+      <span class="brand">Sent to you</span>
+      <span style="width:44px"></span>
+    </header>
+    <div id="inbox-feed"></div>
+  </section>
 
   <!-- ===== Sheets ===== -->
   <div id="scrim" hidden></div>

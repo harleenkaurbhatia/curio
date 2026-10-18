@@ -8,6 +8,8 @@ import { applyFeedback } from './core/feedback';
 import { computeInsights } from './core/insights';
 import { refreshVideos, type Env } from './jobs/refresh';
 import { refreshReads } from './jobs/reads';
+import { connectInstagram, receiveWebhook, refreshInstagramTokens } from './jobs/instagram';
+import { mediaIdToShortcode } from './core/instagram';
 
 type Vars = { user: User; repo: Repo };
 const app = new Hono<{ Bindings: Env; Variables: Vars }>();
@@ -94,6 +96,17 @@ app.post('/api/admin/refresh', async (c) => {
   return c.json({ videos, reads });
 });
 
+// ---------- Instagram webhook (called by Meta, not by users) ----------
+app.get('/api/ig/webhook', (c) => {
+  const q = c.req.query();
+  if (q['hub.mode'] === 'subscribe' && c.env.IG_VERIFY_TOKEN && q['hub.verify_token'] === c.env.IG_VERIFY_TOKEN) return c.text(q['hub.challenge'] ?? '');
+  return c.text('Forbidden', 403);
+});
+app.post('/api/ig/webhook', async (c) => {
+  const r = await receiveWebhook(c.env, await c.req.text(), c.req.header('x-hub-signature-256') ?? null);
+  return r === 'forbidden' ? c.text('Forbidden', 403) : c.text('EVENT_RECEIVED');
+});
+
 // Everything below needs a signed-in user.
 app.use('/api/*', async (c, next) => {
   const token = tokenFrom(c.req.header('Cookie'));
@@ -148,6 +161,41 @@ app.delete('/api/me', async (c) => {
   if (!row || (!guest && !(await verifyPassword(String(password ?? ''), row.password_hash)))) { await slow(); return c.json({ error: 'Password is incorrect' }, 401); }
   await repo.deleteUser(row.id);
   c.header('Set-Cookie', sessionCookie('', isHttps(c.req.url), 0));
+  return c.json({ ok: true });
+});
+
+// ---------- Instagram inbox ----------
+app.get('/api/ig', async (c) => {
+  const a = await c.get('repo').igAccountFor(c.get('user').id);
+  return c.json({ connected: !!a, username: a?.username ?? null, webhook: new URL('/api/ig/webhook', c.req.url).toString() });
+});
+app.post('/api/ig', async (c) => {
+  const { token } = await c.req.json<{ token?: string }>().catch(() => ({} as any));
+  if (!token || String(token).length < 20) return c.json({ error: 'Paste the access token from the Meta dashboard' }, 400);
+  const r = await connectInstagram(c.get('repo'), c.get('user').id, String(token).trim());
+  return 'error' in r ? c.json(r, 400) : c.json({ ok: true, username: r.username });
+});
+app.delete('/api/ig', async (c) => {
+  await c.get('repo').removeIgAccount(c.get('user').id);
+  return c.json({ ok: true });
+});
+app.get('/api/inbox', async (c) => {
+  const repo = c.get('repo'), userId = c.get('user').id;
+  if (c.req.query('count') !== undefined) return c.json({ unread: await repo.inboxUnread(userId) });
+  const rows = await repo.inbox(userId);
+  return c.json(rows.map((r) => {
+    const code = r.media_id ? mediaIdToShortcode(r.media_id) : null;
+    const link = r.link ?? (code ? `https://www.instagram.com/${r.kind === 'post' ? 'p' : 'reel'}/${code}/` : null);
+    return {
+      id: r.id, kind: r.kind, mediaUrl: r.media_url, title: r.title, text: r.text, at: r.at, seen: !!r.seen, link,
+      embed: link ? `${link}embed/` : null,
+      sender: { name: r.sender_name, username: r.sender_username, pic: r.sender_pic },
+    };
+  }));
+});
+app.post('/api/inbox/seen', async (c) => {
+  const { ids } = await c.req.json<{ ids?: string[] }>().catch(() => ({} as any));
+  await c.get('repo').markInboxSeen(c.get('user').id, Array.isArray(ids) ? ids.map(String) : []);
   return c.json({ ok: true });
 });
 
@@ -297,7 +345,7 @@ app.all('/api/*', (c) => c.json({ error: 'Not found' }, 404));
 export default {
   fetch: app.fetch,
   async scheduled(_e: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(Promise.allSettled([refreshVideos(env), refreshReads(env)])
+    ctx.waitUntil(Promise.allSettled([refreshVideos(env), refreshReads(env), refreshInstagramTokens(env)])
       .then((r) => console.log('refresh', JSON.stringify(r.map((x) => (x.status === 'fulfilled' ? x.value : String(x.reason)))))));
   },
 } satisfies ExportedHandler<Env>;

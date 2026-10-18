@@ -10,6 +10,8 @@ export type Env = {
   YOUTUBE_API_KEY: string;
   ANTHROPIC_API_KEY: string;
   ADMIN_TOKEN?: string;
+  IG_APP_SECRET?: string;   // Meta app secret, verifies webhook signatures
+  IG_VERIFY_TOKEN?: string; // shared with Meta when subscribing the webhook
 };
 
 const DAY = 86_400_000;

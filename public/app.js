@@ -179,6 +179,8 @@ async function runOnboarding() {
 function enterApp() {
   showOnly('app');
   switchView('feed');
+  refreshInboxBadge();
+  state.inboxTimer ??= setInterval(refreshInboxBadge, 60_000);
 }
 for (const b of $$('#tabbar button')) b.onclick = () => switchView(b.dataset.view);
 function switchView(view) {
@@ -438,6 +440,111 @@ async function shareItem(item) {
   openSheet('#share-sheet');
 }
 
+// ---------- Sent to you (Instagram DMs) ----------
+// Meta forwards every reel or post someone sends you on Instagram; this shows them full screen with who sent it.
+async function refreshInboxBadge() {
+  const { unread } = await api('/api/inbox?count').catch(() => ({ unread: 0 }));
+  $('#inbox-badge').hidden = !unread;
+  $('#inbox-badge').textContent = unread > 9 ? '9+' : String(unread);
+}
+const inboxSeen = new IntersectionObserver((entries) => {
+  for (const en of entries) {
+    const v = en.target.querySelector('video');
+    if (en.isIntersecting) {
+      v?.play().catch(() => {});
+      if (en.target.dataset.seen === '0') {
+        en.target.dataset.seen = '1';
+        api('/api/inbox/seen', { method: 'POST', body: { ids: [en.target.dataset.id] } }).then(refreshInboxBadge).catch(() => {});
+      }
+    } else v?.pause();
+  }
+}, { threshold: 0.6 });
+
+function dmMedia(it) {
+  const embed = () => (it.embed ? el('iframe', { src: it.embed, title: it.title || 'Instagram reel', allow: 'autoplay; encrypted-media', loading: 'lazy' }) : fallback());
+  const fallback = () => el('div', { className: 'fallback' },
+    el('p', { className: 'muted', textContent: 'This one can only be opened on Instagram.' }),
+    it.link ? el('a', { className: 'primary with-icon', href: it.link, target: '_blank', rel: 'noopener' }, icon('instagram', 'sm'), 'Open in Instagram') : null);
+  if (!it.mediaUrl) return embed();
+  // Instagram's own CDN links expire after a few days; fall back to the official embed.
+  if (it.kind === 'post') return el('img', { className: 'media', src: it.mediaUrl, alt: it.title || '', referrerPolicy: 'no-referrer', onerror() { this.replaceWith(embed()); } });
+  const v = el('video', { src: it.mediaUrl, loop: true, muted: true, playsInline: true, preload: 'metadata', onerror() { this.replaceWith(embed()); } });
+  v.onclick = () => { v.muted = !v.muted; toast(v.muted ? 'Muted' : 'Sound on'); };
+  return v;
+}
+
+function dmSlide(it) {
+  const who = it.sender.username ? `@${it.sender.username}` : 'Someone on Instagram';
+  const pic = it.sender.pic
+    ? el('img', { src: it.sender.pic, alt: '', referrerPolicy: 'no-referrer', onerror() { this.replaceWith(el('span', { className: 'ava', textContent: initial(who.replace('@', '')) })); } })
+    : el('span', { className: 'ava', textContent: initial(it.sender.name || it.sender.username || '?') });
+  const open = el('button', { className: 'act', aria: { label: 'Open in Instagram' } }, icon('instagram'), el('small', { textContent: 'Instagram' }));
+  open.onclick = () => it.link && window.open(it.link, '_blank', 'noopener');
+  const share = el('button', { className: 'act', aria: { label: 'Share' } }, icon('send'), el('small', { textContent: 'Share' }));
+  share.onclick = () => shareItem({ title: it.title || `Reel from ${who}`, url: it.link || it.mediaUrl });
+  const node = el('article', { className: 'dm', data: { id: it.id, seen: it.seen ? '1' : '0' } },
+    dmMedia(it),
+    el('div', { className: 'sent-by' }, pic,
+      el('div', { className: 'grow' },
+        el('strong', { className: 'truncate', textContent: `Sent by ${it.sender.name || who}` }),
+        el('span', { className: 'sub truncate', textContent: `${it.sender.name ? `${who} · ` : ''}${it.kind === 'reel' ? 'Reel' : 'Post'} · ${ago(it.at)}` }))),
+    it.text || it.title ? el('p', { className: 'note', textContent: it.text || it.title }) : null,
+    it.link ? el('div', { className: 'rail' }, open, share) : null);
+  inboxSeen.observe(node);
+  return node;
+}
+
+async function openInbox() {
+  stopPlayback();
+  $('#inbox').hidden = false;
+  const box = $('#inbox-feed');
+  box.replaceChildren(el('div', { className: 'empty', textContent: 'Loading…' }));
+  try {
+    const [items, ig] = await Promise.all([api('/api/inbox'), api('/api/ig')]);
+    if (items.length) return box.replaceChildren(...items.map(dmSlide));
+    box.replaceChildren(el('div', { className: 'empty' }, el('div', { className: 'big-icon' }, icon('send')),
+      el('h2', { textContent: ig.connected ? 'Nothing yet' : 'Connect Instagram' }),
+      el('p', { textContent: ig.connected
+        ? `Reels and posts people send @${ig.username} on Instagram will show up here, with who sent them.`
+        : 'Reels and posts people send you on Instagram can land here automatically. Set it up in the You tab.' })));
+  } catch (err) { box.replaceChildren(el('div', { className: 'empty', textContent: err.message })); }
+}
+$('#inbox-btn').onclick = openInbox;
+$('#inbox-back').onclick = () => {
+  for (const v of $$('#inbox video')) v.pause();
+  $('#inbox').hidden = true;
+  switchView('feed');
+};
+
+async function renderInstagram() {
+  const box = $('#ig-box');
+  const ig = await api('/api/ig').catch(() => null);
+  if (!ig) return box.replaceChildren();
+  if (ig.connected) {
+    const off = el('button', { className: 'small-btn', textContent: 'Disconnect' });
+    off.onclick = async () => { await api('/api/ig', { method: 'DELETE' }); renderInstagram(); };
+    return box.replaceChildren(el('ul', { className: 'list' }, el('li', {},
+      el('span', { className: 'ava', textContent: initial(ig.username) }),
+      el('div', { className: 'grow' }, el('div', { textContent: `@${ig.username}` }), el('div', { className: 'sub', textContent: 'Reels sent to you here appear under the paper-plane icon' })),
+      off)));
+  }
+  const input = el('input', { type: 'password', placeholder: 'Paste Instagram access token', autocomplete: 'off', aria: { label: 'Instagram access token' } });
+  const go = el('button', { className: 'primary', textContent: 'Connect' });
+  const err = el('p', { className: 'error', role: 'alert' });
+  go.onclick = async () => {
+    err.textContent = '';
+    try { const r = await api('/api/ig', { method: 'POST', body: { token: input.value } }); toast(`Connected @${r.username}`); renderInstagram(); }
+    catch (e) { err.textContent = e.message; }
+  };
+  box.replaceChildren(
+    el('p', { className: 'muted small', textContent: 'Get reels people send you on Instagram here automatically, with who sent them. Needs an Instagram professional (Creator) account.' }),
+    el('ol', { className: 'ig-steps' },
+      el('li', { textContent: 'In the Meta developer app, open Instagram → API setup with Instagram login.' }),
+      el('li', {}, 'Webhook callback URL: ', el('code', { textContent: ig.webhook }), ', then subscribe to messages.'),
+      el('li', { textContent: 'Generate an access token for your account and paste it below.' })),
+    el('form', { className: 'row', onsubmit(e) { e.preventDefault(); go.click(); } }, input, go), err);
+}
+
 // ---------- Sheets ----------
 function sheetOpen() { return $$('.sheet').some((s) => !s.hidden); }
 function openSheet(sel) {
@@ -668,7 +775,7 @@ async function renderProfile() {
     };
     return b;
   }));
-  await Promise.all([renderTopics(), renderCreators()]);
+  await Promise.all([renderTopics(), renderCreators(), renderInstagram()]);
 }
 
 async function renderTopics() {
