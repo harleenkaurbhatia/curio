@@ -47,7 +47,7 @@ npm run db:remote
 npx wrangler secret put YOUTUBE_API_KEY
 npx wrangler secret put ANTHROPIC_API_KEY
 npx wrangler secret put ADMIN_TOKEN
-npm run deploy                        # prints https://curio.<your-subdomain>.workers.dev
+npm run deploy                        # prints https://curio.<your-subdomain>.workers.dev (live: https://curio.hkbharleen20.workers.dev)
 ```
 
 That URL **is the download link**. Open it in Chrome on Android → sign up → tap **Install Curio** (Profile tab) or Chrome menu ⋮ → **Install app**. It installs like a normal app with its own icon and runs full screen.

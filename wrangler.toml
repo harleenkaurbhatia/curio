@@ -11,7 +11,7 @@ run_worker_first = ["/api/*"]
 [[d1_databases]]
 binding = "DB"
 database_name = "curio"
-database_id = "REPLACE_AFTER_wrangler_d1_create"
+database_id = "a5b9ad19-9090-4150-b34b-1877858bf85f"
 migrations_dir = "migrations"
 
 # Small refresh slices every 15 minutes; each creator is rechecked about every 4 hours.
