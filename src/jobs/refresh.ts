@@ -22,7 +22,7 @@ const CALLS_PER_RUN = 24; // reads pipeline gets its own 20
 const REDISCOVER_AFTER = DAY;
 const REFETCH_AFTER = 4 * 60 * 60 * 1000;
 
-export type RefreshReport = { discovered: number; scored: number; accepted: number; newVideos: number; quotaUsed: number; stoppedEarly?: string };
+export type RefreshReport = { discovered: number; scored: number; accepted: number; newVideos: number; quotaUsed: number; stoppedEarly?: string; errors?: string[] };
 
 export async function refreshVideos(env: Env, now = Date.now()): Promise<RefreshReport> {
   const repo = new Repo(env.DB);
@@ -35,7 +35,13 @@ export async function refreshVideos(env: Env, now = Date.now()): Promise<Refresh
 
   try {
     report.discovered = await discover(repo, yt, now);
-    Object.assign(report, await scorePending(repo, new Curator(env.ANTHROPIC_API_KEY, calls), now));
+    try {
+      Object.assign(report, await scorePending(repo, new Curator(env.ANTHROPIC_API_KEY, calls), now));
+    } catch (e) {
+      if (e instanceof QuotaExceeded || e instanceof CallLimitReached) throw e;
+      // Claude unavailable: keep fetching from already-approved creators.
+      (report.errors ??= []).push(String(e).slice(0, 200));
+    }
     report.newVideos = await fetchNewShorts(repo, yt, now);
   } catch (e) {
     if (!(e instanceof QuotaExceeded || e instanceof CallLimitReached)) throw e;

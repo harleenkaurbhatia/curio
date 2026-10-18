@@ -13,7 +13,7 @@ const NEW_POSTS_PER_FEED = 8;
 const FEEDS_PER_RUN = 12; // leave room for discovery
 const DISCOVER_TOPICS_PER_RUN = 1;
 
-export type ReadsReport = { screened: number; accepted: number; vetted: number; discovered: number; newPosts: number; stoppedEarly?: string };
+export type ReadsReport = { screened: number; accepted: number; vetted: number; discovered: number; newPosts: number; stoppedEarly?: string; errors?: string[] };
 
 export async function refreshReads(env: Env, now = Date.now()): Promise<ReadsReport> {
   const repo = new Repo(env.DB);
@@ -38,9 +38,10 @@ export async function refreshReads(env: Env, now = Date.now()): Promise<ReadsRep
     try {
       await step();
     } catch (e) {
-      if (!(e instanceof CallLimitReached)) throw e;
-      report.stoppedEarly = e.message;
-      break;
+      if (e instanceof CallLimitReached) { report.stoppedEarly = e.message; break; }
+      // One failing step (e.g. Claude out of credit, a source down) must not stop the others.
+      (report.errors ??= []).push(String(e).slice(0, 200));
+      console.log('reads step failed', String(e));
     }
   }
   return report;
