@@ -53,7 +53,7 @@ export type PostForReview = { id: string; topic: string; source: string; author:
 const POST_SYSTEM = `You pick text posts and articles for a knowledge feed read in short breaks by curious people in India (English, Hindi, Hinglish).
 Score each item 0 to 1: is it genuinely interesting, accurate and worth 30 seconds? Reward new facts, clear explanations, original insight, useful news context.
 Anchors: 0.8+ = remarkable, would tell a friend. 0.6 = solid, informative, worth showing. 0.4 = routine or thin (minor corporate news, listicles). 0.2 = filler.
-Credible news and explainers from established outlets are usually 0.55–0.75. Don't penalise a topic for being serious or regional.
+Credible news and explainers from established outlets are usually 0.55–0.75. A clear recipe with real method, an on-this-day or encyclopedia entry, or an evergreen essay counts as knowledge too (0.6+ when well made). Don't penalise a topic for being serious or regional.
 Health and news need a higher bar of credibility. Reject (set reject_reason): ${POST_REJECT_REASONS.join(', ')}.
 lifestyle_flex = bragging, luxury, hustle-motivation, "I made $X". self_promo = mainly selling something. shallow = no real information.
 hook: one plain line (under 14 words) saying why it's worth reading, in the item's language. No hype, no emojis.`;

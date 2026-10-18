@@ -1,5 +1,5 @@
 import { CallLimit, CallLimitReached, QuotaBudget, QuotaExceeded } from '../core/quota';
-import { isShort, parseDuration } from '../core/shorts';
+import { classifyVideo, parseDuration } from '../core/shorts';
 import { YouTube } from '../youtube';
 import { Curator, type ChannelForReview } from '../llm';
 import { Repo, type NewVideo } from '../db';
@@ -14,7 +14,7 @@ export type Env = {
 
 const DAY = 86_400_000;
 const TARGET_CHANNELS_PER_TOPIC = 12;
-const NEW_CANDIDATES_PER_TOPIC = 15;
+const NEW_CANDIDATES_PER_TOPIC = 8;
 const SCORE_GROUP = 15;
 const MAX_SCORED_PER_RUN = 30;
 // Free plan allows 50 outbound requests per run; keep headroom.
@@ -34,7 +34,7 @@ export async function refreshVideos(env: Env, now = Date.now()): Promise<Refresh
   if (!env.YOUTUBE_API_KEY || !env.ANTHROPIC_API_KEY) return { ...report, stoppedEarly: 'YOUTUBE_API_KEY / ANTHROPIC_API_KEY not set' };
 
   try {
-    report.discovered = await discover(repo, yt, now);
+    await discover(repo, yt, now, report);
     try {
       Object.assign(report, await scorePending(repo, new Curator(env.ANTHROPIC_API_KEY, calls), now));
     } catch (e) {
@@ -54,9 +54,8 @@ export async function refreshVideos(env: Env, now = Date.now()): Promise<Refresh
 }
 
 // Search (100 units) only for topics that are short of creators.
-async function discover(repo: Repo, yt: YouTube, now: number): Promise<number> {
+async function discover(repo: Repo, yt: YouTube, now: number, report: RefreshReport): Promise<void> {
   const [topics, counts, known] = await Promise.all([repo.followedTopics(), repo.activeCountByTopic(), repo.knownChannelIds()]);
-  let added = 0;
   for (const t of topics) {
     if ((counts.get(t.id) ?? 0) >= TARGET_CHANNELS_PER_TOPIC) continue;
     if (t.last_discovered_at && now - t.last_discovered_at < REDISCOVER_AFTER) continue;
@@ -64,6 +63,8 @@ async function discover(repo: Repo, yt: YouTube, now: number): Promise<number> {
     const hits = [
       ...(await yt.searchShorts(t.query_en, 'en', days)),
       ...(await yt.searchShorts(t.query_hi, 'hi', days)),
+      // Full videos (4–20 min) for topics like recipes, from the same kind of creators.
+      ...(t.long_videos ? await yt.searchShorts(t.query_en, 'en', 90, 'medium') : []),
     ];
     // Channels that show up more than once in search are better bets.
     const freq = new Map<string, number>();
@@ -83,10 +84,9 @@ async function discover(repo: Repo, yt: YouTube, now: number): Promise<number> {
         sample_titles: JSON.stringify({ subscribers: c.subscribers, recent: recent.map((r) => ({ title: r.title, publishedAt: r.publishedAt })) }),
       }]);
       known.add(c.id);
-      added++;
+      report.discovered++; // counted as we go, so a run cut short still reports it
     }
   }
-  return added;
 }
 
 async function scorePending(repo: Repo, curator: Curator, now: number) {
@@ -117,6 +117,7 @@ async function scorePending(repo: Repo, curator: Curator, now: number) {
 
 // 1 unit per creator + 1 unit per 50 new videos. Least recently checked creators go first.
 async function fetchNewShorts(repo: Repo, yt: YouTube, now: number): Promise<number> {
+  const longOk = new Set((await repo.topics()).filter((t) => t.long_videos).map((t) => t.id));
   const active = (await repo.channels('active'))
     .filter((c) => !c.last_fetched_at || now - c.last_fetched_at >= REFETCH_AFTER)
     .sort((a, b) => (a.last_fetched_at ?? 0) - (b.last_fetched_at ?? 0));
@@ -129,19 +130,20 @@ async function fetchNewShorts(repo: Repo, yt: YouTube, now: number): Promise<num
       if (e instanceof QuotaExceeded || e instanceof CallLimitReached) throw e;
       continue; // deleted/private playlist: skip this creator
     }
-    const recent = uploads.filter((u) => now - u.publishedAt <= 21 * DAY);
+    const recent = uploads.filter((u) => now - u.publishedAt <= 45 * DAY);
     const known = await repo.knownVideoIds(recent.map((u) => u.id));
     const fresh = recent.filter((u) => !known.has(u.id));
     if (fresh.length) {
       const details = new Map((await yt.videoDetails(fresh.map((u) => u.id))).map((d) => [d.id, d]));
-      const shorts: NewVideo[] = fresh.flatMap((u) => {
+      const keep: NewVideo[] = fresh.flatMap((u) => {
         const d = details.get(u.id);
-        return d && isShort(d)
-          ? [{ id: u.id, channel_id: c.id, topic_id: c.topic_id, title: u.title, published_at: u.publishedAt, duration_s: parseDuration(d.duration) }]
+        const type = d && classifyVideo(d, longOk.has(c.topic_id));
+        return type
+          ? [{ id: u.id, channel_id: c.id, topic_id: c.topic_id, title: u.title, published_at: u.publishedAt, duration_s: parseDuration(d.duration), vertical: type === 'short' }]
           : [];
       });
-      await repo.insertVideos(shorts);
-      added += shorts.length;
+      await repo.insertVideos(keep);
+      added += keep.length;
     }
     await repo.markFetched(c.id, now);
   }

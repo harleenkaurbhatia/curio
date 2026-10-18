@@ -16,4 +16,4 @@ migrations_dir = "migrations"
 
 # Small refresh slices every 15 minutes; each creator is rechecked about every 4 hours.
 [triggers]
-crons = ["*/15 * * * *"]
+crons = ["*/5 * * * *"]

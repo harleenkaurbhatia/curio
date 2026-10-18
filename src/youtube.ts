@@ -19,9 +19,9 @@ export class YouTube {
     return res.json() as Promise<T>;
   }
 
-  async searchShorts(q: string, lang: 'en' | 'hi', publishedAfterDays: number): Promise<SearchHit[]> {
+  async searchShorts(q: string, lang: 'en' | 'hi', publishedAfterDays: number, videoDuration: 'short' | 'medium' = 'short'): Promise<SearchHit[]> {
     const data = await this.get<{ items: { snippet: { channelId: string; channelTitle: string } }[] }>('search', 'search', {
-      part: 'snippet', type: 'video', videoDuration: 'short', maxResults: '50', q,
+      part: 'snippet', type: 'video', videoDuration, maxResults: '50', q,
       relevanceLanguage: lang, regionCode: 'IN', safeSearch: 'moderate',
       publishedAfter: new Date(Date.now() - publishedAfterDays * 86_400_000).toISOString(),
     });

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0b0b0f">
+  <meta name="theme-color" content="#000000">
   <meta name="description" content="Curio: short videos and reads that make you smarter. No feeds of friends, no like counts.">
   <title>Curio</title>
   <link rel="manifest" href="/manifest.webmanifest">
@@ -57,13 +57,13 @@
         <span class="brand">Curio</span>
         <button id="done-btn" class="pill-btn">Done for now</button>
       </header>
-      <div id="sound-hint" class="pill" hidden>Tap for sound</div>
+      <div id="sound-hint" class="pill with-icon" hidden><svg class="ic sm" aria-hidden="true"><use href="/icons.svg#volume-x"/></svg>Tap for sound</div>
     </section>
 
     <!-- Library -->
     <section id="view-library" class="view scroll" hidden>
       <header class="page-head"><h1>Library</h1>
-        <button id="new-thought" class="pill-btn">+ Thought</button></header>
+        <button id="new-thought" class="pill-btn with-icon"><svg class="ic sm" aria-hidden="true"><use href="/icons.svg#plus"/></svg>Thought</button></header>
       <nav class="segmented" role="tablist" aria-label="Library sections">
         <button role="tab" data-lib="saved" aria-selected="true">Saved</button>
         <button role="tab" data-lib="later" aria-selected="false">Later</button>
@@ -116,14 +116,10 @@
 
     <!-- Bottom tabs -->
     <nav id="tabbar" aria-label="Main">
-      <button data-view="feed" aria-current="page" aria-label="Feed">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5V20a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z"/></svg><span>Feed</span></button>
-      <button data-view="library" aria-label="Library">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg><span>Library</span></button>
-      <button data-view="insights" aria-label="Insights">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V12M12 20V5M19 20v-9"/></svg><span>Insights</span></button>
-      <button data-view="profile" aria-label="Profile">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg><span>You</span></button>
+      <button data-view="feed" aria-current="page" aria-label="Feed"><svg class="ic" aria-hidden="true"><use href="/icons.svg#house"/></svg></button>
+      <button data-view="library" aria-label="Library"><svg class="ic" aria-hidden="true"><use href="/icons.svg#library"/></svg></button>
+      <button data-view="insights" aria-label="Insights"><svg class="ic" aria-hidden="true"><use href="/icons.svg#chart-column"/></svg></button>
+      <button data-view="profile" aria-label="You"><svg class="ic" aria-hidden="true"><use href="/icons.svg#circle-user-round"/></svg></button>
     </nav>
   </div>
 
@@ -136,7 +132,7 @@
     <textarea id="thought-text" rows="5" placeholder="An idea, a question, a connection…" aria-label="Your thought"></textarea>
     <div class="row between">
       <div class="row" id="voice-controls">
-        <button id="mic" class="mic" aria-label="Speak your thought" aria-pressed="false">🎙️</button>
+        <button id="mic" class="mic" aria-label="Speak your thought" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="/icons.svg#mic"/></svg></button>
         <div class="segmented small" role="radiogroup" aria-label="Speaking language">
           <button role="radio" data-lang="en-IN" aria-checked="true">EN</button>
           <button role="radio" data-lang="hi-IN" aria-checked="false">हिं</button>
@@ -159,12 +155,12 @@
   </section>
 
   <section id="viewer-sheet" class="sheet tall" role="dialog" aria-modal="true" aria-labelledby="viewer-title" hidden>
-    <div class="row between"><h2 id="viewer-title" class="truncate">Item</h2><button class="icon-btn close-sheet" aria-label="Close">✕</button></div>
+    <div class="row between"><h2 id="viewer-title" class="truncate">Item</h2><button class="icon-btn close-sheet" aria-label="Close"><svg class="ic" aria-hidden="true"><use href="/icons.svg#x"/></svg></button></div>
     <div id="viewer-body"></div>
   </section>
 
   <section id="summary" class="screen center" hidden>
-    <div class="big-emoji">🌱</div>
+    <div class="big-icon"><svg class="ic" aria-hidden="true"><use href="/icons.svg#sprout"/></svg></div>
     <h1>Nice break.</h1>
     <div id="summary-stats" class="summary-stats"></div>
     <button id="summary-continue" class="ghost">Keep going</button>

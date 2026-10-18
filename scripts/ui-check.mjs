@@ -35,6 +35,11 @@ await page.click('#auth-submit');
 await page.waitForSelector('#onboarding:not([hidden]) #ob-topic-chips button');
 await shot('02-onboarding-topics');
 check(await noHScroll(), 'onboarding: no horizontal scroll');
+check(await page.$$eval('#ob-topic-chips button', (b) => b.every((x) => x.getAttribute('aria-pressed') === 'false')), 'onboarding: no topic is preselected');
+await page.click('#ob-next');
+await page.waitForFunction(() => document.querySelector('#ob-error').textContent.includes('at least one'));
+for (const b of await page.$$('#ob-topic-chips button')) await b.click(); // tapping picks a topic
+check(await page.$$eval('#ob-topic-chips button', (b) => b.every((x) => x.getAttribute('aria-pressed') === 'true')), 'onboarding: tapping a topic selects it');
 await page.click('#ob-next');
 await page.waitForSelector('#ob-langs:not([hidden])');
 await shot('03-onboarding-langs');

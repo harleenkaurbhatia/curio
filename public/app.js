@@ -12,6 +12,19 @@ const el = (tag, props = {}, ...kids) => {
   return n;
 };
 
+const SVG_NS = 'http://www.w3.org/2000/svg';
+// Lucide icon from the /icons.svg sprite.
+const icon = (name, cls = '') => {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('class', `ic ${cls}`.trim());
+  svg.setAttribute('aria-hidden', 'true');
+  const use = document.createElementNS(SVG_NS, 'use');
+  use.setAttribute('href', `/icons.svg#${name}`);
+  svg.append(use);
+  return svg;
+};
+const initial = (name) => (name || '?').trim().charAt(0).toUpperCase();
+
 const LANGS = [['en', 'English'], ['hi', 'हिन्दी Hindi'], ['hinglish', 'Hinglish']];
 const MODE_LABEL = { catchup: 'News', learn: 'Learn', unwind: 'Unwind' };
 const SOURCE_LABEL = { youtube: 'YouTube', bsky: 'Bluesky', hn: 'Hacker News', rss: 'Article' };
@@ -101,7 +114,7 @@ $('#auth-form').addEventListener('submit', async (e) => {
 async function runOnboarding() {
   showOnly('onboarding');
   const topics = await api('/api/topics');
-  const picked = new Set(topics.map((t) => t.id)); // everything on by default; tap to remove
+  const picked = new Set(topics.filter((t) => t.following).map((t) => t.id)); // tap to pick
   const langs = new Set(state.me.languages);
   const chip = (label, on, toggle) => {
     const b = el('button', { className: 'chip-toggle', textContent: label, aria: { pressed: String(on) } });
@@ -109,7 +122,7 @@ async function runOnboarding() {
     return b;
   };
   const flip = (set, key) => (set.has(key) ? (set.delete(key), false) : (set.add(key), true));
-  $('#ob-topic-chips').replaceChildren(...topics.map((t) => chip(t.name, true, () => flip(picked, t.id))));
+  $('#ob-topic-chips').replaceChildren(...topics.map((t) => chip(t.name, picked.has(t.id), () => flip(picked, t.id))));
   $('#ob-lang-chips').replaceChildren(...LANGS.map(([code, label]) => chip(label, langs.has(code), () => flip(langs, code))));
   let step = 1;
   $('#ob-topics').hidden = false; $('#ob-langs').hidden = true; $('#ob-step').textContent = '1';
@@ -195,58 +208,63 @@ const observer = new IntersectionObserver((entries) => {
 function snapshotOf(item) {
   return {
     kind: item.kind, title: item.title || item.text?.slice(0, 120) || '', url: item.url, source: item.source, topicName: item.topicName,
-    text: item.text, image: item.kind === 'video' ? `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg` : item.image,
+    text: item.text, vertical: item.vertical, image: item.kind === 'video' ? `https://i.ytimg.com/vi/${item.id}/hqdefault.jpg` : item.image,
   };
 }
 
 function actionRail(item) {
-  const btn = (cls, emoji, label, onClick, pressed) => {
-    const b = el('button', { className: `act ${cls}`, aria: { label, ...(pressed !== undefined ? { pressed: String(pressed) } : {}) } }, emoji, el('small', { textContent: label }));
+  const btn = (cls, name, label, onClick, pressed) => {
+    const b = el('button', { className: `act ${cls}`, aria: { label, ...(pressed !== undefined ? { pressed: String(pressed) } : {}) } }, icon(name), el('small', { textContent: label }));
     b.onclick = (e) => { e.stopPropagation(); onClick(b); };
     return b;
   };
-  const up = btn('up', '👍', 'Like', () => rate(item, 1, up, down), false);
-  const down = btn('down', '👎', 'Less', () => rate(item, -1, up, down), false);
-  const save = btn('save', '🔖', 'Save', (b) => toggleList(item, 'saved', b), state.lists.saved.has(item.id));
-  const later = btn('later', '🕒', 'Later', (b) => toggleList(item, 'later', b), state.lists.later.has(item.id));
-  const share = btn('share', '↗️', 'Share', () => shareItem(item));
-  const think = btn('think', '💭', 'Thought', () => openThought(item));
-  return el('div', { className: 'rail' }, up, down, save, later, share, think);
+  const up = btn('up', 'heart', 'Like', () => rate(item, 1, up, down), false);
+  const down = btn('down', 'thumbs-down', 'Less', () => rate(item, -1, up, down), false);
+  const think = btn('think', 'message-circle', 'Thought', () => openThought(item));
+  const share = btn('share', 'send', 'Share', () => shareItem(item));
+  const save = btn('save', 'bookmark', 'Save', (b) => toggleList(item, 'saved', b), state.lists.saved.has(item.id));
+  const later = btn('later', 'clock', 'Later', (b) => toggleList(item, 'later', b), state.lists.later.has(item.id));
+  return el('div', { className: 'rail' }, up, down, think, share, save, later);
 }
 
 function videoSlide(item) {
   const tap = el('div', { className: 'tap' });
   tap.onclick = onTap;
   const id = encodeURIComponent(item.id);
-  return el('article', { className: 'slide video' },
+  return el('article', { className: `slide video${item.vertical === false ? ' wide' : ''}` },
     el('div', { className: 'thumb', style: `background-image:url(https://i.ytimg.com/vi/${id}/hq720.jpg), url(https://i.ytimg.com/vi/${id}/hqdefault.jpg)` }),
     tap,
     el('div', { className: 'shade' }),
     el('div', { className: 'meta' },
-      el('span', { className: 'chip', textContent: item.topicName }),
+      el('div', { className: 'who' },
+        el('span', { className: 'ava', textContent: initial(item.source) }),
+        el('strong', { className: 'truncate', textContent: item.source }),
+        el('span', { className: 'chip', textContent: item.topicName })),
       el('h2', { textContent: item.title }),
-      el('div', { className: 'by', textContent: `${item.source} · ${ago(item.publishedAt)}` })),
+      el('div', { className: 'by', textContent: `${item.vertical === false ? 'Video' : 'Short'} · ${ago(item.publishedAt)}` })),
     actionRail(item));
 }
 
 function readSlide(item) {
   const card = el('div', { className: 'card' },
-    el('div', { className: 'source' },
-      el('span', { className: 'badge', textContent: SOURCE_LABEL[item.sourceKind] || 'Read' }),
-      el('span', { className: 'truncate', textContent: `${item.author && item.author !== item.source ? `${item.author} · ` : ''}${item.source} · ${ago(item.publishedAt)}` })),
-    el('span', { className: 'chip', textContent: item.topicName, style: 'align-self:flex-start' }),
+    el('div', { className: 'who' },
+      el('span', { className: 'ava', textContent: initial(item.source) }),
+      el('div', { className: 'grow' },
+        el('strong', { className: 'truncate', textContent: item.source }),
+        el('div', { className: 'sub truncate', textContent: `${item.author && item.author !== item.source ? `${item.author} · ` : ''}${SOURCE_LABEL[item.sourceKind] || 'Read'} · ${ago(item.publishedAt)}` })),
+      el('span', { className: 'chip', textContent: item.topicName })),
     item.image ? el('img', { className: 'hero', src: item.image, alt: '', loading: 'lazy', referrerPolicy: 'no-referrer', onerror() { this.remove(); } }) : null,
     item.title ? el('h2', { textContent: item.title }) : null,
     item.text ? el('div', { className: 'body', textContent: item.text }) : null,
     item.hook ? el('p', { className: 'hook', textContent: `Why read: ${item.hook}` }) : null,
-    el('a', { className: 'open ghost', href: item.url, target: '_blank', rel: 'noopener', textContent: 'Read full ↗' }));
+    el('a', { className: 'open ghost', href: item.url, target: '_blank', rel: 'noopener' }, 'Read full', icon('external-link', 'sm')));
   return el('article', { className: 'slide read' }, card, actionRail(item));
 }
 
 function endSlide() {
   const again = el('button', { className: 'ghost', textContent: 'Check again' });
   const node = el('article', { className: 'slide end', id: 'end-slide' },
-    el('div', { className: 'big-emoji', textContent: '✨' }),
+    el('div', { className: 'big-icon' }, icon('sparkles')),
     el('h2', { textContent: "You're all caught up" }),
     el('p', { className: 'muted', textContent: 'That’s everything new for now. Fresh videos and reads arrive through the day.' }),
     again);
@@ -290,6 +308,7 @@ function activate(index) {
   if (!item) return;
   state.watchStart = Date.now();
   state.session.items++;
+  $('#player-wrap').classList.toggle('wide', item.vertical === false);
   if (item.kind === 'video') play(item.id);
   else if (playerReady) { wantId = null; player.pauseVideo(); }
   $('#sound-hint').hidden = !(item.kind === 'video' && state.muted && !state.hintShown);
@@ -496,7 +515,7 @@ $('#summary-close').onclick = () => {
   state.session = { items: 0, ms: 0, saved: 0, thoughts: 0, liked: 0 };
   showOnly('app');
   switchView('library');
-  toast('See you later 👋');
+  toast('See you later');
 };
 
 // ---------- Library ----------
@@ -513,11 +532,11 @@ async function renderLibrary() {
   state.lists.saved = new Set(lib.saved.map((s) => s.itemId));
   state.lists.later = new Set(lib.later.map((s) => s.itemId));
   if (libTab === 'thoughts') {
-    if (!lib.thoughts.length) return box.replaceChildren(empty('💭', 'No thoughts yet', 'Tap 💭 on anything that sparks an idea or a question.'));
+    if (!lib.thoughts.length) return box.replaceChildren(empty('message-circle', 'No thoughts yet', 'Tap the speech bubble on anything that sparks an idea or a question.'));
     box.replaceChildren(...lib.thoughts.map((t) => {
       const del = el('button', { className: 'small-btn', textContent: 'Delete' });
       del.onclick = async () => { if (!confirm('Delete this thought?')) return; await api(`/api/notes/${t.id}`, { method: 'DELETE' }); renderLibrary(); };
-      const ref = t.item ? el('button', { className: 'ref truncate', textContent: `↳ ${t.item.title || t.item.source}` }) : null;
+      const ref = t.item ? el('button', { className: 'ref truncate', textContent: `On: ${t.item.title || t.item.source}` }) : null;
       if (ref) ref.onclick = () => openViewer(t.item, t.itemId);
       return el('div', { className: 'thought' }, el('p', { textContent: t.text }), ref,
         el('div', { className: 'row between', style: 'margin-top:8px' }, el('span', { className: 'muted small', textContent: ago(t.at) }), del));
@@ -527,11 +546,11 @@ async function renderLibrary() {
   const items = lib[libTab];
   if (!items.length) {
     return box.replaceChildren(libTab === 'saved'
-      ? empty('🔖', 'Nothing saved yet', 'Tap 🔖 on videos and reads you want to keep.')
-      : empty('🕒', 'Nothing for later', 'Tap 🕒 when you’re short on time.'));
+      ? empty('bookmark', 'Nothing saved yet', 'Tap the bookmark on videos and reads you want to keep.')
+      : empty('clock', 'Nothing for later', 'Tap the clock when you’re short on time.'));
   }
   box.replaceChildren(...items.map(({ itemId, item, at }) => {
-    const thumb = el('div', { className: 'lib-thumb', textContent: item.image ? '' : (item.kind === 'video' ? '▶' : '📄') });
+    const thumb = el('div', { className: 'lib-thumb' }, item.image ? null : icon(item.kind === 'video' ? 'play' : 'library'));
     if (item.image) thumb.style.backgroundImage = `url("${encodeURI(item.image)}")`;
     const open = el('button', { className: 'open-item' }, thumb,
       el('div', { style: 'min-width:0' },
@@ -543,17 +562,17 @@ async function renderLibrary() {
     return el('div', { className: 'lib-item' }, open, remove);
   }));
 }
-function empty(emoji, title, text) {
-  return el('div', { className: 'empty' }, el('div', { className: 'big-emoji', textContent: emoji }), el('h2', { textContent: title }), el('p', { textContent: text }));
+function empty(name, title, text) {
+  return el('div', { className: 'empty' }, el('div', { className: 'big-icon' }, icon(name)), el('h2', { textContent: title }), el('p', { textContent: text }));
 }
 function openViewer(item, itemId) {
   $('#viewer-title').textContent = item.title || item.source;
-  const share = el('button', { className: 'ghost', textContent: 'Share ↗' });
+  const share = el('button', { className: 'ghost with-icon' }, icon('send', 'sm'), 'Share');
   share.onclick = () => { closeSheets(); shareItem({ ...item, id: itemId }); };
-  const think = el('button', { className: 'ghost', textContent: '💭 Thought' });
+  const think = el('button', { className: 'ghost with-icon' }, icon('message-circle', 'sm'), 'Thought');
   think.onclick = () => { closeSheets(); openThought({ ...item, id: itemId }); };
   const body = item.kind === 'video'
-    ? el('iframe', { src: `https://www.youtube-nocookie.com/embed/${encodeURIComponent(itemId)}?autoplay=1&playsinline=1&rel=0`, allow: 'autoplay; encrypted-media; picture-in-picture', allowFullscreen: true, title: item.title })
+    ? el('iframe', { className: item.vertical === false ? 'wide' : '', src: `https://www.youtube-nocookie.com/embed/${encodeURIComponent(itemId)}?autoplay=1&playsinline=1&rel=0`, allow: 'autoplay; encrypted-media; picture-in-picture', allowFullscreen: true, title: item.title })
     : el('div', {},
         item.image ? el('img', { src: item.image, alt: '', style: 'width:100%;border-radius:14px;margin-bottom:12px', referrerPolicy: 'no-referrer' }) : null,
         el('p', { className: 'full-text', textContent: item.text || '' }));

@@ -5,7 +5,7 @@ import type { RawPost } from './core/sources';
 export type Mode = 'catchup' | 'learn' | 'unwind';
 export type Topic = {
   id: number; name: string; mode: Mode; query_en: string; query_hi: string; active: number;
-  last_discovered_at: number | null; last_bsky_discovered_at: number | null; created_by: number | null;
+  last_discovered_at: number | null; last_bsky_discovered_at: number | null; created_by: number | null; long_videos: number;
 };
 export type User = { id: number; email: string; name: string; languages: string; tz_offset: number; onboarded: number };
 export type Channel = {
@@ -18,9 +18,9 @@ export type Feed = {
   score: number | null; reason: string | null; status: 'pending' | 'active' | 'rejected'; meta: string;
   discovered_at: number; last_fetched_at: number | null;
 };
-export type NewVideo = { id: string; channel_id: string; topic_id: number; title: string; published_at: number; duration_s: number };
+export type NewVideo = { id: string; channel_id: string; topic_id: number; title: string; published_at: number; duration_s: number; vertical: boolean };
 export type FeedItem = Candidate & {
-  kind: 'video' | 'post'; title: string; source: string; topicName: string; url: string;
+  kind: 'video' | 'post'; title: string; source: string; topicName: string; url: string; vertical?: boolean;
   text?: string; image?: string | null; author?: string | null; hook?: string | null; sourceKind?: string;
 };
 export type Snapshot = { kind: 'video' | 'post'; title: string; url: string; source: string; topicName: string; text?: string; image?: string | null };
@@ -217,9 +217,9 @@ export class Repo {
     if (!vs.length) return;
     const now = Date.now();
     await this.db.batch(vs.map((v) => this.db
-      .prepare(`INSERT OR IGNORE INTO videos (id, channel_id, topic_id, title, published_at, duration_s, added_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)`)
-      .bind(v.id, v.channel_id, v.topic_id, v.title, v.published_at, v.duration_s, now)));
+      .prepare(`INSERT OR IGNORE INTO videos (id, channel_id, topic_id, title, published_at, duration_s, vertical, added_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(v.id, v.channel_id, v.topic_id, v.title, v.published_at, v.duration_s, v.vertical ? 1 : 0, now)));
   }
 
   // ---------- Feed ----------
@@ -228,7 +228,7 @@ export class Repo {
     const since = now - 21 * DAY;
     const langs = user.languages.split(',').filter(Boolean);
     const [videos, posts] = await Promise.all([
-      this.db.prepare(`SELECT v.id, v.title, v.channel_id AS source_id, v.published_at, c.title AS source, c.score,
+      this.db.prepare(`SELECT v.id, v.title, v.channel_id AS source_id, v.published_at, v.vertical, c.title AS source, c.score,
                               t.id AS topic_id, t.name AS topic_name, t.mode
                        FROM videos v
                        JOIN channels c ON c.id = v.channel_id AND c.status = 'active'
@@ -256,7 +256,8 @@ export class Repo {
       title: r.title, source: r.source, topicName: r.topic_name,
     });
     return [
-      ...videos.results.map((r) => ({ ...common(r), kind: 'video' as const, channelScore: r.score ?? 0.6, url: `https://www.youtube.com/shorts/${r.id}` })),
+      ...videos.results.map((r) => ({ ...common(r), kind: 'video' as const, channelScore: r.score ?? 0.6, vertical: !!r.vertical,
+        url: r.vertical ? `https://www.youtube.com/shorts/${r.id}` : `https://www.youtube.com/watch?v=${r.id}` })),
       ...posts.results.map((r) => ({
         ...common(r), kind: 'post' as const,
         // A great post from an average source still deserves a chance.

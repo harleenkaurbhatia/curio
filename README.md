@@ -2,7 +2,7 @@
 
 Short videos and reads that make you smarter, in a Reels-style swipe feed. No friends' stories, no follower or like counts, no ads, no trackers.
 
-- **Feed:** YouTube Shorts from creators Curio finds and vets for your topics, mixed with text "reads" from Bluesky, Hacker News and quality newsletters and explainers (Quanta, Nature, Psyche, Aeon, Indian Express Explained, BBC Hindi and more). English, Hindi and Hinglish.
+- **Feed:** YouTube Shorts, plus full 2–20 min videos for topics like recipes, science and health, from well-known creators and ones Curio finds and vets, mixed with text "reads" from Bluesky, Hacker News and quality newsletters and explainers (Quanta, Nature, Psyche, Aeon, Indian Express Explained, BBC Hindi and more). English, Hindi and Hinglish.
 - **On every item:** 👍 / 👎 (the feed learns), 🔖 Save, 🕒 Later, ↗ Share (WhatsApp and any app, with the original link), 💭 Thought (type or speak it in English or Hindi).
 - **Library:** Saved, Later and Thoughts, with in-app playback.
 - **Insights:** your time today and this week, streak, topic mix, totals. Private to you.
@@ -58,11 +58,11 @@ Content builds up over the first hour as the job discovers creators, vets them a
 
 1. **Discover:** for followed topics that are short of creators, one YouTube search in English and one in Hindi (at most once a day per topic; search has its own 100/day quota). Bluesky people are found per topic the same way.
 2. **Vet:** Claude scores each channel or person on consistency, clarity and credibility, rejecting clickbait, rage-bait, reposts, low credibility and lifestyle/flex content. Every text post is screened individually and gets a one-line "why read".
-3. **Fetch:** each creator is rechecked about every 4 hours (YouTube uploads playlist, 1 unit), feeds every 2 hours. Videos must be 3 minutes or less and vertical.
+3. **Fetch:** each creator is rechecked about every 4 hours (YouTube uploads playlist, 1 unit), feeds every 2 hours. Videos must be vertical Shorts (≤3 min), or 2–20 min for topics with `long_videos` on. `scripts/curated-channels.mjs` seeds well-known creators per topic.
 4. **Rank (per user):** topic weight × creator weight × quality × freshness. Then variety rules: no topic or creator back to back, never two reads in a row, reads at most 40% of a batch, every 5th slot explores a less-watched topic. Seen items never return. News expires after 3 days, everything else after 21.
 5. **Learn:** 👍/👎 nudge that user's topic and creator weights.
 
-Each 15-minute run does a capped slice of work (24 requests for videos, 20 for reads) to stay within Cloudflare's free-plan limits.
+Each 5-minute run (and an extra run right after someone changes topics) does a capped slice of work (24 requests for videos, 20 for reads) to stay within Cloudflare's free-plan limits.
 
 ## Development
 

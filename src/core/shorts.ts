@@ -13,3 +13,10 @@ export function isShort(v: { duration: string; embedWidth?: number; embedHeight?
   if (!v.embedWidth || !v.embedHeight) return false;
   return v.embedHeight > v.embedWidth;
 }
+
+// Topics like cooking also allow full videos (2–20 min) from vetted creators.
+export function classifyVideo(v: { duration: string; embedWidth?: number; embedHeight?: number }, allowLong: boolean): 'short' | 'long' | null {
+  if (isShort(v)) return 'short';
+  const secs = parseDuration(v.duration);
+  return allowLong && secs >= 120 && secs <= 1200 ? 'long' : null;
+}

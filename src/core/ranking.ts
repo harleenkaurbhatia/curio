@@ -10,7 +10,7 @@ export type Candidate = {
 export type Weights = { topic: Record<string, number>; channel: Record<string, number> };
 
 const DAY = 86_400_000;
-const MAX_AGE = { news: 3 * DAY, other: 21 * DAY };
+const MAX_AGE = { news: 3 * DAY, other: 45 * DAY };
 const HALF_LIFE = { news: 2 * DAY, other: 7 * DAY };
 // Each extra video from a topic within one batch counts for less, so batches stay mixed.
 const REPEAT_PENALTY = 0.7;

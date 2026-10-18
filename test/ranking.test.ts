@@ -12,11 +12,11 @@ const c = (topic: string, channelId: string, ageDays = 1, extra: Partial<Candida
 const seeded = (seed = 1) => () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
 
 describe('isFresh', () => {
-  it('news expires after 3 days, other topics after 21', () => {
+  it('news expires after 3 days, other topics after 45', () => {
     expect(isFresh(c('news', 'a', 2.9, { news: true }), NOW)).toBe(true);
     expect(isFresh(c('news', 'a', 3.1, { news: true }), NOW)).toBe(false);
-    expect(isFresh(c('science', 'a', 20), NOW)).toBe(true);
-    expect(isFresh(c('science', 'a', 22), NOW)).toBe(false);
+    expect(isFresh(c('science', 'a', 44), NOW)).toBe(true);
+    expect(isFresh(c('science', 'a', 46), NOW)).toBe(false);
   });
 });
 
@@ -34,7 +34,7 @@ describe('buildFeed', () => {
   const opts = { now: NOW, limit: 10, seen: new Set<string>(), rng: seeded() };
 
   it('excludes seen and stale videos', () => {
-    const seen = c('s', 'a'), stale = c('s', 'b', 30), ok = c('t', 'c');
+    const seen = c('s', 'a'), stale = c('s', 'b', 50), ok = c('t', 'c');
     const out = buildFeed([seen, stale, ok], W, { ...opts, seen: new Set([seen.id]) });
     expect(out.map((x) => x.id)).toEqual([ok.id]);
   });

@@ -16,6 +16,11 @@ const MAX_CUSTOM_TOPICS = 5;
 const isHttps = (url: string) => new URL(url).protocol === 'https:';
 const slow = () => new Promise((r) => setTimeout(r, 600)); // blunt password guessing
 
+// New follows shouldn't wait for the next cron run: start finding creators right away.
+function kickRefresh(c: { env: Env; executionCtx: { waitUntil(p: Promise<unknown>): void } }) {
+  c.executionCtx.waitUntil(refreshVideos(c.env).catch((e) => console.log('kick', String(e))));
+}
+
 app.use('/api/*', async (c, next) => {
   c.set('repo', new Repo(c.env.DB));
   await next();
@@ -116,12 +121,14 @@ app.put('/api/topics/follow', async (c) => {
   const { topicIds } = await c.req.json<{ topicIds: number[] }>();
   if (!Array.isArray(topicIds) || !topicIds.length) return c.json({ error: 'Pick at least one topic' }, 400);
   await c.get('repo').followAll(c.get('user').id, topicIds.map(Number).filter(Number.isFinite).slice(0, 100));
+  kickRefresh(c);
   return c.json({ ok: true });
 });
 
 app.patch('/api/topics/:id', async (c) => {
   const { following } = await c.req.json<{ following: boolean }>();
   await c.get('repo').setFollow(c.get('user').id, Number(c.req.param('id')), !!following);
+  kickRefresh(c);
   return c.json({ ok: true });
 });
 
