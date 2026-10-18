@@ -37,6 +37,24 @@ const state = {
   session: { items: 0, ms: 0, saved: 0, thoughts: 0, liked: 0 },
 };
 
+// ---------- Interests kept on this device ----------
+// Topics and languages live in localStorage too, so if the session cookie is cleared
+// the app quietly recreates a guest account with the same interests.
+const INTERESTS_KEY = 'curio.interests';
+function loadInterests() {
+  try { return JSON.parse(localStorage.getItem(INTERESTS_KEY)) || {}; } catch { return {}; }
+}
+function saveInterests(patch) {
+  try { localStorage.setItem(INTERESTS_KEY, JSON.stringify({ ...loadInterests(), ...patch })); } catch {}
+}
+function clearInterests() {
+  try { localStorage.removeItem(INTERESTS_KEY); } catch {}
+}
+async function syncTopicsToDevice() {
+  const topics = await api('/api/topics').catch(() => null);
+  if (topics) saveInterests({ topicIds: topics.filter((t) => t.following).map((t) => t.id) });
+}
+
 // ---------- API ----------
 async function api(path, opts = {}) {
   const res = await fetch(path, {
@@ -45,7 +63,6 @@ async function api(path, opts = {}) {
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
-  if (res.status === 401 && !path.startsWith('/api/auth')) { showAuth(); throw Object.assign(new Error('Please sign in'), { status: 401 }); }
   if (!res.ok) throw Object.assign(new Error(data.error || 'Something went wrong'), { status: res.status });
   return data;
 }
@@ -79,19 +96,25 @@ $$('.install-btn').forEach((b) => (b.onclick = async () => {
 }));
 
 // ---------- Auth ----------
-let signingUp = false;
-function showAuth() {
+// Signing in is optional: people start as guests. 'claim' saves a guest account with a login.
+let authMode = 'login';
+function showAuth(mode = 'login') {
   stopPlayback();
+  setAuthMode(mode);
   showOnly('auth');
 }
-$('#auth-switch').onclick = () => {
-  signingUp = !signingUp;
-  $('#auth-name').hidden = !signingUp;
-  $('#auth-submit').textContent = signingUp ? 'Create account' : 'Sign in';
-  $('#auth-switch').textContent = signingUp ? 'Already have an account? Sign in' : 'New here? Create an account';
-  $('#auth-password').autocomplete = signingUp ? 'new-password' : 'current-password';
+function setAuthMode(mode) {
+  authMode = mode;
+  const naming = mode !== 'login';
+  $('#auth-name').hidden = !naming;
+  $('#auth-submit').textContent = { login: 'Sign in', signup: 'Create account', claim: 'Save my account' }[mode];
+  $('#auth-switch').textContent = naming ? 'Already have an account? Sign in' : (state.me?.guest ? 'Save this account instead' : 'New here? Create an account');
+  $('#auth-password').autocomplete = naming ? 'new-password' : 'current-password';
   $('#auth-error').textContent = '';
-};
+}
+$('#auth-switch').onclick = () => setAuthMode(authMode === 'login' ? (state.me?.guest ? 'claim' : 'signup') : 'login');
+$('#auth-skip').onclick = () => boot();
+$('#ob-signin').onclick = () => showAuth('login');
 $('#auth-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const btn = $('#auth-submit');
@@ -99,9 +122,10 @@ $('#auth-form').addEventListener('submit', async (e) => {
   $('#auth-error').textContent = '';
   try {
     const body = { email: $('#auth-email').value, password: $('#auth-password').value };
-    if (signingUp) Object.assign(body, { name: $('#auth-name').value, tzOffset: -new Date().getTimezoneOffset() });
-    await api(signingUp ? '/api/auth/signup' : '/api/auth/login', { method: 'POST', body });
+    if (authMode !== 'login') Object.assign(body, { name: $('#auth-name').value, tzOffset: -new Date().getTimezoneOffset() });
+    await api({ login: '/api/auth/login', signup: '/api/auth/signup', claim: '/api/me/claim' }[authMode], { method: 'POST', body });
     $('#auth-password').value = '';
+    if (authMode === 'claim') toast('Account saved. Sign in with it on any device.');
     await boot();
   } catch (err) {
     $('#auth-error').textContent = err.message;
@@ -133,6 +157,7 @@ async function runOnboarding() {
       if (step === 1) {
         if (!picked.size) throw new Error('Pick at least one topic');
         await api('/api/topics/follow', { method: 'PUT', body: { topicIds: [...picked] } });
+        saveInterests({ topicIds: [...picked] });
         step = 2;
         $('#ob-topics').hidden = true; $('#ob-langs').hidden = false; $('#ob-step').textContent = '2';
         $('#ob-next').textContent = 'Start exploring';
@@ -140,6 +165,8 @@ async function runOnboarding() {
         if (!langs.size) throw new Error('Pick at least one language');
         await api('/api/me', { method: 'PATCH', body: { languages: [...langs], onboarded: true, tzOffset: -new Date().getTimezoneOffset() } });
         state.me.languages = [...langs];
+        saveInterests({ languages: [...langs] });
+        saveInterests({ languages: [...langs] });
         enterApp();
       }
     } catch (err) {
@@ -622,7 +649,9 @@ async function renderInsights() {
 // ---------- Profile ----------
 async function renderProfile() {
   $('#profile-name').textContent = state.me.name;
-  $('#profile-email').textContent = state.me.email;
+  $('#profile-email').textContent = state.me.guest ? 'Guest on this device' : state.me.email;
+  $('#guest-card').hidden = !state.me.guest;
+  $('#logout').hidden = state.me.guest;
   const langs = new Set(state.me.languages);
   $('#lang-chips').replaceChildren(...LANGS.map(([code, label]) => {
     const b = el('button', { className: 'chip-toggle', textContent: label, aria: { pressed: String(langs.has(code)) } });
@@ -646,7 +675,7 @@ async function renderTopics() {
   const topics = await api('/api/topics');
   $('#topic-list').replaceChildren(...topics.map((t) => {
     const toggle = el('input', { type: 'checkbox', className: 'toggle', checked: t.following, aria: { label: `Follow ${t.name}` } });
-    toggle.onchange = () => api(`/api/topics/${t.id}`, { method: 'PATCH', body: { following: toggle.checked } }).then(resetFeed).catch(() => (toggle.checked = !toggle.checked));
+    toggle.onchange = () => api(`/api/topics/${t.id}`, { method: 'PATCH', body: { following: toggle.checked } }).then(() => { syncTopicsToDevice(); resetFeed(); }).catch(() => (toggle.checked = !toggle.checked));
     return el('li', {}, el('div', { className: 'grow' }, el('div', { textContent: t.name }), el('div', { className: 'sub', textContent: MODE_LABEL[t.mode] + (t.custom ? ' · added by you' : '') })), toggle);
   }));
 }
@@ -691,16 +720,22 @@ async function renderCreators() {
   ]));
 }
 
+$('#save-account').onclick = () => showAuth('claim');
+$('#guest-signin').onclick = () => showAuth('login');
 $('#logout').onclick = async () => {
   flushViews();
   await api('/api/auth/logout', { method: 'POST' }).catch(() => {});
+  clearInterests();
   location.reload();
 };
 $('#delete-account').onclick = async () => {
-  const pw = prompt('This permanently deletes your account, history, saves and thoughts.\nEnter your password to confirm:');
-  if (!pw) return;
+  const warning = 'This permanently deletes your account, history, saves and thoughts.';
+  let pw = '';
+  if (state.me.guest) { if (!confirm(warning)) return; }
+  else { pw = prompt(`${warning}\nEnter your password to confirm:`); if (!pw) return; }
   try {
     await api('/api/me', { method: 'DELETE', body: { password: pw } });
+    clearInterests();
     location.reload();
   } catch (err) { toast(err.message); }
 };
@@ -727,13 +762,19 @@ function ago(ms) {
 function fmtMin(m) { return m < 1 ? (m > 0 ? '<1' : '0') : m < 10 ? String(Math.round(m * 10) / 10) : String(Math.round(m)); }
 
 // ---------- Boot ----------
-async function boot() {
+async function boot(retried = false) {
   try {
     state.me = await api('/api/me');
-  } catch {
-    return; // api() already showed the sign-in screen
+  } catch (err) {
+    if (err.status !== 401 || retried) return toast(err.message);
+    // No session: start as a guest, restoring interests saved on this device.
+    const { topicIds, languages } = loadInterests();
+    await api('/api/auth/guest', { method: 'POST', body: { topicIds, languages, tzOffset: -new Date().getTimezoneOffset() } }).catch(() => {});
+    return boot(true);
   }
   if (!state.me.onboarded) return runOnboarding();
+  saveInterests({ languages: state.me.languages });
+  syncTopicsToDevice();
   api('/api/library').then((lib) => {
     state.lists.saved = new Set(lib.saved.map((s) => s.itemId));
     state.lists.later = new Set(lib.later.map((s) => s.itemId));

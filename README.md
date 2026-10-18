@@ -7,7 +7,7 @@ Short videos and reads that make you smarter, in a Reels-style swipe feed. No fr
 - **Library:** Saved, Later and Thoughts, with in-app playback.
 - **Insights:** your time today and this week, streak, topic mix, totals. Private to you.
 - **Done for now:** ends a session with a calm summary.
-- **Accounts:** anyone can sign up with email and password. Each person has their own topics, languages, feed and history.
+- **Accounts:** no sign-in needed. Visitors start as guests, and their topics and languages are also kept in localStorage so a cleared cookie doesn't lose them. "Save my account" (You tab) adds an email and password and keeps everything. Each person has their own topics, languages, feed and history.
 
 **Stack:** Cloudflare Workers (free plan) for the app, API, D1 (SQLite) database and a background job every 15 minutes, plus Claude Haiku 5.5 for vetting. Videos play only through the official YouTube player (`youtube-nocookie.com`). Nothing is downloaded or re-hosted.
 

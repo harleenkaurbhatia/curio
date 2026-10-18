@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { EMAIL_RE, issueSession, sessionCookie, tokenFrom } from './auth';
 import { hashPassword, sha256, verifyPassword } from './core/password';
+import { guestEmail, isGuest } from './core/guest';
 import { Repo, type Mode, type Snapshot, type User } from './db';
 import { buildFeed } from './core/ranking';
 import { applyFeedback } from './core/feedback';
@@ -39,6 +40,26 @@ app.post('/api/auth/signup', async (c) => {
   if (await repo.userForLogin(email)) { await slow(); return c.json({ error: 'An account with this email already exists' }, 409); }
   const id = await repo.createUser(email, name, await hashPassword(password));
   if (Number.isFinite(b.tzOffset)) await repo.updateUser(id, { tz_offset: Math.round(Number(b.tzOffset)) });
+  const s = await issueSession();
+  await repo.createSession(s.hash, id, s.expiresAt);
+  c.header('Set-Cookie', sessionCookie(s.token, isHttps(c.req.url)));
+  return c.json({ ok: true });
+});
+
+// Start without an account. The client sends interests it kept in localStorage, so a
+// returning visitor whose cookie was cleared skips onboarding.
+app.post('/api/auth/guest', async (c) => {
+  const b = await c.req.json<{ topicIds?: number[]; languages?: string[]; tzOffset?: number }>().catch(() => ({} as any));
+  const repo = c.get('repo');
+  const id = await repo.createUser(guestEmail(), 'Guest', '');
+  const topicIds = Array.isArray(b.topicIds) ? b.topicIds.map(Number).filter(Number.isFinite).slice(0, 100) : [];
+  const langs = Array.isArray(b.languages) ? b.languages.filter((l: string) => LANGS.includes(l)) : [];
+  if (topicIds.length) { await repo.followAll(id, topicIds); kickRefresh(c); }
+  await repo.updateUser(id, {
+    languages: langs.length ? langs.join(',') : undefined,
+    tz_offset: Number.isFinite(b.tzOffset) ? Math.round(Number(b.tzOffset)) : undefined,
+    onboarded: topicIds.length > 0 && langs.length > 0,
+  });
   const s = await issueSession();
   await repo.createSession(s.hash, id, s.expiresAt);
   c.header('Set-Cookie', sessionCookie(s.token, isHttps(c.req.url)));
@@ -85,7 +106,8 @@ app.use('/api/*', async (c, next) => {
 // ---------- Account ----------
 app.get('/api/me', (c) => {
   const { id, ...u } = c.get('user');
-  return c.json({ ...u, languages: u.languages.split(',').filter(Boolean), onboarded: !!u.onboarded });
+  const guest = isGuest(u.email);
+  return c.json({ ...u, guest, email: guest ? '' : u.email, languages: u.languages.split(',').filter(Boolean), onboarded: !!u.onboarded });
 });
 
 app.patch('/api/me', async (c) => {
@@ -101,11 +123,29 @@ app.patch('/api/me', async (c) => {
   return c.json({ ok: true });
 });
 
+// Turn a guest account into a real one, keeping its history, saves and thoughts.
+app.post('/api/me/claim', async (c) => {
+  const user = c.get('user');
+  if (!isGuest(user.email)) return c.json({ error: 'This account already has a login' }, 400);
+  const b = await c.req.json<{ name?: string; email?: string; password?: string }>().catch(() => ({} as any));
+  const name = String(b.name ?? '').trim().slice(0, 60);
+  const email = String(b.email ?? '').trim().toLowerCase();
+  const password = String(b.password ?? '');
+  if (!name) return c.json({ error: 'Please enter your name' }, 400);
+  if (!EMAIL_RE.test(email) || isGuest(email)) return c.json({ error: 'Please enter a valid email' }, 400);
+  if (password.length < 8) return c.json({ error: 'Password needs at least 8 characters' }, 400);
+  const repo = c.get('repo');
+  if (await repo.userForLogin(email)) { await slow(); return c.json({ error: 'An account with this email already exists' }, 409); }
+  await repo.setLogin(user.id, email, name, await hashPassword(password));
+  return c.json({ ok: true });
+});
+
 app.delete('/api/me', async (c) => {
   const { password } = await c.req.json<{ password?: string }>().catch(() => ({ password: '' }));
   const repo = c.get('repo');
   const row = await repo.userForLogin(c.get('user').email);
-  if (!row || !(await verifyPassword(String(password ?? ''), row.password_hash))) { await slow(); return c.json({ error: 'Password is incorrect' }, 401); }
+  const guest = isGuest(c.get('user').email); // guests have no password to confirm with
+  if (!row || (!guest && !(await verifyPassword(String(password ?? ''), row.password_hash)))) { await slow(); return c.json({ error: 'Password is incorrect' }, 401); }
   await repo.deleteUser(row.id);
   c.header('Set-Cookie', sessionCookie('', isHttps(c.req.url), 0));
   return c.json({ ok: true });

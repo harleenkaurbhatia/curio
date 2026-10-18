@@ -17,19 +17,10 @@ let failed = 0;
 const check = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'} ${msg}`); if (!cond) failed++; };
 const noHScroll = () => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
 
-// --- Sign up ---
+// --- First visit: straight in as a guest, no sign-in screen ---
 await page.goto(BASE);
-await page.waitForSelector('#auth:not([hidden])');
-await shot('01-signin');
-await page.click('#auth-switch');
-await page.fill('#auth-name', 'Test User');
-await page.fill('#auth-email', email);
-await page.fill('#auth-password', 'short');
-await page.click('#auth-submit');
-await page.waitForFunction(() => document.querySelector('#auth-error').textContent.length > 0);
-check((await page.textContent('#auth-error')).includes('8 characters'), 'weak password is rejected with a clear message');
-await page.fill('#auth-password', password);
-await page.click('#auth-submit');
+await page.waitForSelector('#onboarding:not([hidden])');
+check(await page.isHidden('#auth'), 'first visit skips sign-in and goes to onboarding');
 
 // --- Onboarding ---
 await page.waitForSelector('#onboarding:not([hidden]) #ob-topic-chips button');
@@ -44,6 +35,14 @@ await page.click('#ob-next');
 await page.waitForSelector('#ob-langs:not([hidden])');
 await shot('03-onboarding-langs');
 await page.click('#ob-next');
+
+await page.waitForSelector('#app:not([hidden])');
+const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('curio.interests') || '{}'));
+check(saved.topicIds?.length > 0 && saved.languages?.length > 0, `interests saved in localStorage (${saved.topicIds?.length} topics, ${saved.languages})`);
+await ctx.clearCookies();
+await page.reload();
+await page.waitForSelector('#app:not([hidden]), #onboarding:not([hidden])');
+check(await page.isVisible('#app'), 'cookie cleared: interests restored from localStorage, no onboarding');
 
 // --- Feed ---
 await page.waitForSelector('#app:not([hidden]) .slide:not(.end)');
@@ -142,9 +141,28 @@ if (nCreators) {
 }
 check(await noHScroll(), 'profile: no horizontal scroll');
 
-// --- Sign out / in / delete ---
-await page.click('#logout');
+// --- Save the guest account, sign out / in / delete ---
+await page.waitForSelector('#guest-card:not([hidden])');
+check(await page.isHidden('#logout'), 'guest sees "save account" instead of sign out');
+await page.click('#save-account');
 await page.waitForSelector('#auth:not([hidden])');
+await page.fill('#auth-name', 'Test User');
+await page.fill('#auth-email', email);
+await page.fill('#auth-password', 'short');
+await page.click('#auth-submit');
+await page.waitForFunction(() => document.querySelector('#auth-error').textContent.length > 0);
+check((await page.textContent('#auth-error')).includes('8 characters'), 'weak password is rejected with a clear message');
+await page.fill('#auth-password', password);
+await page.click('#auth-submit');
+await page.waitForSelector('#app:not([hidden])');
+check(true, 'guest account saved with email and password');
+
+await page.click('#tabbar [data-view=profile]');
+await page.waitForSelector('#guest-card[hidden]', { state: 'attached' });
+await page.click('#logout');
+await page.waitForSelector('#onboarding:not([hidden])');
+check(true, 'sign out starts fresh (interests cleared from this device)');
+await page.click('#ob-signin');
 await page.fill('#auth-email', email);
 await page.fill('#auth-password', 'wrong-password');
 await page.click('#auth-submit');
@@ -153,15 +171,16 @@ check(true, 'wrong password is rejected');
 await page.fill('#auth-password', password);
 await page.click('#auth-submit');
 await page.waitForSelector('#app:not([hidden])');
-check(true, 'sign out and back in works (no onboarding again)');
+check(true, 'sign in works (no onboarding again)');
 await page.click('#tabbar [data-view=library]');
 await page.waitForSelector('#library-list .lib-item');
-check(true, 'library persists across sign-in');
+check(true, 'library kept from guest days persists across sign-in');
 
 await page.click('#tabbar [data-view=profile]');
 page.once('dialog', (d) => d.accept(password));
 await page.click('#delete-account');
-await page.waitForSelector('#auth:not([hidden])');
+await page.waitForSelector('#onboarding:not([hidden])');
+await page.click('#ob-signin');
 await page.fill('#auth-email', email);
 await page.fill('#auth-password', password);
 await page.click('#auth-submit');

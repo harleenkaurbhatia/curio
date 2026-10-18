@@ -43,6 +43,9 @@ export class Repo {
   async userForLogin(email: string) {
     return this.db.prepare('SELECT id, password_hash FROM users WHERE email = ?').bind(email).first<{ id: number; password_hash: string }>();
   }
+  async setLogin(id: number, email: string, name: string, passwordHash: string) {
+    await this.db.prepare('UPDATE users SET email = ?, name = ?, password_hash = ? WHERE id = ?').bind(email, name, passwordHash, id).run();
+  }
   async createSession(tokenHash: string, userId: number, expiresAt: number) {
     await this.db.prepare('INSERT INTO sessions (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)')
       .bind(tokenHash, userId, expiresAt, Date.now()).run();

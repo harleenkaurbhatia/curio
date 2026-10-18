@@ -25,6 +25,7 @@
       <p id="auth-error" class="error" role="alert"></p>
     </form>
     <button id="auth-switch" class="link">New here? Create an account</button>
+    <button id="auth-skip" class="link muted">Continue without an account</button>
     <button class="install-btn ghost" hidden>Install the app</button>
   </section>
 
@@ -43,6 +44,7 @@
         <div id="ob-lang-chips" class="chips"></div>
       </div>
       <p id="ob-error" class="error" role="alert"></p>
+      <button id="ob-signin" class="link">Already have an account? Sign in</button>
     </div>
     <div class="sticky-cta"><button id="ob-next" class="primary wide">Continue</button></div>
   </section>
@@ -83,6 +85,14 @@
       <header class="page-head"><h1 id="profile-name">You</h1></header>
       <div class="pad-x">
         <p id="profile-email" class="muted small"></p>
+        <div id="guest-card" class="card-block" hidden>
+          <h2>You're using Curio as a guest</h2>
+          <p class="muted small">Your interests are saved on this device. Save your account to keep your history, saves and thoughts on any phone.</p>
+          <div class="stack" style="width:100%">
+            <button id="save-account" class="primary wide">Save my account</button>
+            <button id="guest-signin" class="ghost wide">I already have an account</button>
+          </div>
+        </div>
         <button class="install-btn primary wide" hidden>Install Curio on this phone</button>
 
         <h2 class="section-title">Languages</h2>
