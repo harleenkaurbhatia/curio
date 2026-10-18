@@ -9,8 +9,7 @@ export type Env = {
   ASSETS: Fetcher;
   YOUTUBE_API_KEY: string;
   ANTHROPIC_API_KEY: string;
-  APP_PASSCODE: string;
-  SESSION_SECRET: string;
+  ADMIN_TOKEN?: string;
 };
 
 const DAY = 86_400_000;
@@ -19,18 +18,20 @@ const NEW_CANDIDATES_PER_TOPIC = 15;
 const SCORE_GROUP = 15;
 const MAX_SCORED_PER_RUN = 30;
 // Free plan allows 50 outbound requests per run; keep headroom.
-const CALLS_PER_RUN = 40;
+const CALLS_PER_RUN = 24; // reads pipeline gets its own 20
 const REDISCOVER_AFTER = DAY;
 const REFETCH_AFTER = 4 * 60 * 60 * 1000;
 
 export type RefreshReport = { discovered: number; scored: number; accepted: number; newVideos: number; quotaUsed: number; stoppedEarly?: string };
 
-export async function refresh(env: Env, now = Date.now()): Promise<RefreshReport> {
+export async function refreshVideos(env: Env, now = Date.now()): Promise<RefreshReport> {
   const repo = new Repo(env.DB);
-  const budget = new QuotaBudget(await repo.quotaUsed());
+  const q = await repo.quotaUsed();
+  const budget = new QuotaBudget(q.used, q.searches);
   const calls = new CallLimit(CALLS_PER_RUN);
   const yt = new YouTube(env.YOUTUBE_API_KEY, budget, calls);
   const report: RefreshReport = { discovered: 0, scored: 0, accepted: 0, newVideos: 0, quotaUsed: 0 };
+  if (!env.YOUTUBE_API_KEY || !env.ANTHROPIC_API_KEY) return { ...report, stoppedEarly: 'YOUTUBE_API_KEY / ANTHROPIC_API_KEY not set' };
 
   try {
     report.discovered = await discover(repo, yt, now);
@@ -40,7 +41,7 @@ export async function refresh(env: Env, now = Date.now()): Promise<RefreshReport
     if (!(e instanceof QuotaExceeded || e instanceof CallLimitReached)) throw e;
     report.stoppedEarly = e.message; // keep everything fetched so far
   } finally {
-    await repo.saveQuota(budget.used);
+    await repo.saveQuota(budget.used, budget.searches);
     report.quotaUsed = budget.used;
   }
   return report;
@@ -48,7 +49,7 @@ export async function refresh(env: Env, now = Date.now()): Promise<RefreshReport
 
 // Search (100 units) only for topics that are short of creators.
 async function discover(repo: Repo, yt: YouTube, now: number): Promise<number> {
-  const [topics, counts, known] = await Promise.all([repo.topics(true), repo.activeCountByTopic(), repo.knownChannelIds()]);
+  const [topics, counts, known] = await Promise.all([repo.followedTopics(), repo.activeCountByTopic(), repo.knownChannelIds()]);
   let added = 0;
   for (const t of topics) {
     if ((counts.get(t.id) ?? 0) >= TARGET_CHANNELS_PER_TOPIC) continue;

@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { CallLimit } from './core/quota';
 import { parseScores, REJECT_REASONS, type ChannelScore } from './core/channelScores';
+import { parsePostScores, POST_REJECT_REASONS, type PostScore } from './core/postScores';
 
 const MODEL = 'claude-haiku-5-5';
 
@@ -45,6 +46,36 @@ const SCHEMA = {
   additionalProperties: false,
 };
 
+export type PostForReview = { id: string; topic: string; source: string; author: string | null; title: string; text: string };
+
+const POST_SYSTEM = `You pick text posts and articles for a knowledge feed read in short breaks by curious people in India (English, Hindi, Hinglish).
+Score each item 0 to 1: is it genuinely interesting, accurate and worth 30 seconds? Reward new facts, clear explanations, original insight, useful news context.
+Health and news need a higher bar of credibility. Reject (set reject_reason): ${POST_REJECT_REASONS.join(', ')}.
+lifestyle_flex = bragging, luxury, hustle-motivation, "I made $X". self_promo = mainly selling something. shallow = no real information.
+hook: one plain line (under 14 words) saying why it's worth reading, in the item's language. No hype, no emojis.`;
+
+const POST_SCHEMA = {
+  type: 'object',
+  properties: {
+    posts: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+          score: { type: 'number' },
+          reject_reason: { anyOf: [{ type: 'string', enum: [...POST_REJECT_REASONS] }, { type: 'null' }] },
+          hook: { type: 'string' },
+        },
+        required: ['id', 'score', 'reject_reason', 'hook'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['posts'],
+  additionalProperties: false,
+};
+
 export class Curator {
   private client: Anthropic;
   constructor(apiKey: string, private calls: CallLimit) {
@@ -66,7 +97,21 @@ export class Curator {
       messages: [{ role: 'user', content: JSON.stringify(listing) }],
     } as Anthropic.MessageCreateParamsNonStreaming);
     if (res.stop_reason === 'refusal') return [];
-    const text = res.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('');
-    return parseScores(text, group.map((c) => c.id));
+    return parseScores(textOf(res), group.map((c) => c.id));
+  }
+
+  async screenPosts(group: PostForReview[]): Promise<PostScore[]> {
+    this.calls.take();
+    const res = await this.client.messages.create({
+      model: MODEL,
+      max_tokens: 4000,
+      system: POST_SYSTEM,
+      output_config: { effort: 'low', format: { type: 'json_schema', schema: POST_SCHEMA } },
+      messages: [{ role: 'user', content: JSON.stringify(group) }],
+    } as Anthropic.MessageCreateParamsNonStreaming);
+    if (res.stop_reason === 'refusal') return [];
+    return parsePostScores(textOf(res), group.map((p) => p.id));
   }
 }
+
+const textOf = (res: Anthropic.Message) => res.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('');

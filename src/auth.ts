@@ -1,32 +1,20 @@
-const COOKIE = 'curio_session';
-const MAX_AGE_S = 90 * 86400;
-const enc = new TextEncoder();
+import { newToken, sha256 } from './core/password';
 
-async function hmac(secret: string, data: string): Promise<string> {
-  const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(data));
-  return btoa(String.fromCharCode(...new Uint8Array(sig))).replace(/[+/=]/g, (c) => ({ '+': '-', '/': '_', '=': '' })[c]!);
+export const COOKIE = 'curio_sid';
+export const SESSION_DAYS = 90;
+
+export async function issueSession(): Promise<{ token: string; hash: string; expiresAt: number }> {
+  const token = newToken();
+  return { token, hash: await sha256(token), expiresAt: Date.now() + SESSION_DAYS * 86_400_000 };
 }
 
-function safeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
+export function sessionCookie(token: string, secure: boolean, maxAgeS = SESSION_DAYS * 86400): string {
+  return `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeS}${secure ? '; Secure' : ''}`;
 }
 
-export async function passcodeMatches(given: string, expected: string, secret: string): Promise<boolean> {
-  // Compare MACs so timing doesn't leak the passcode length or prefix.
-  return safeEqual(await hmac(secret, given), await hmac(secret, expected));
+export function tokenFrom(cookieHeader: string | undefined): string | null {
+  const m = cookieHeader?.match(new RegExp(`(?:^|;\\s*)${COOKIE}=([\\w-]+)`));
+  return m ? m[1] : null;
 }
 
-export async function sessionCookie(secret: string, secure: boolean): Promise<string> {
-  const exp = String(Date.now() + MAX_AGE_S * 1000);
-  return `${COOKIE}=${exp}.${await hmac(secret, exp)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${MAX_AGE_S}${secure ? '; Secure' : ''}`;
-}
-
-export async function hasSession(cookieHeader: string | undefined, secret: string): Promise<boolean> {
-  const m = cookieHeader?.match(new RegExp(`${COOKIE}=(\\d+)\\.([\\w-]+)`));
-  if (!m || Number(m[1]) < Date.now()) return false;
-  return safeEqual(m[2], await hmac(secret, m[1]));
-}
+export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
