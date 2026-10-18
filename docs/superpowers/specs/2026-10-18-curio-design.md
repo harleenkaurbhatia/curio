@@ -44,3 +44,22 @@ Instagram is fun but its stories and lifestyle content cause comparison. The own
 - **Ranking:** score = topic weight × channel quality × freshness decay, adjusted by feedback; then a diversity pass (no same topic/creator back to back) with ~20% exploration slots.
 - **Frontend:** plain HTML/CSS/JS (no framework), CSS scroll-snap swipe, one YouTube player reused across slides. Starts muted (mobile autoplay rule); one tap unmutes for the session.
 - **Auth:** passcode → HMAC-signed HttpOnly cookie.
+
+## Round 2 additions (2026-10-18, approved by the owner)
+
+**Reads in the feed.** Text cards mixed into the swipe feed, vetted by Claude like videos:
+- Bluesky: discover people per topic (`searchActors`), vet them from bio + recent posts, then read their posts (`getAuthorFeed`). Free, no key.
+- Hacker News front page (points ≥ 150) for Tech / Founders. Free.
+- Newsletters and explainers via RSS (Quanta, Nature, Nobel Prize, BBC World, Rest of World, The Hindu, Indian Express Explained, Scroll, BBC Hindi, Psyche, Aeon, Lenny's Newsletter, Inc42, TechCrunch). Free.
+- Not included: LinkedIn (no official read access; scraping risks the owner's account), Reddit (blocks servers without OAuth app), X (paid per read, roughly $10–30/month; add later behind an optional key).
+- Every post is screened by Claude (score + reject reasons + one-line "why read this"). Never two text cards in a row.
+
+**Actions on every item:** 👍 / 👎, Save, Later, Share, Thought.
+- Share opens the phone's share sheet (WhatsApp etc.) with the original public link (YouTube / article / post), never the private Curio URL. Fallbacks: WhatsApp link, copy link.
+- Save = keep forever; Later = watch/read later queue. Both live in a Library screen.
+- Thought = type or speak (Hindi or English) an idea or question; saved with the item it came from.
+- "That's all for now" button ends a session with a calm summary (watched, saved, thoughts), not an abrupt stop.
+
+**Download link.** The deployed HTTPS URL is the download link: Chrome offers "Install app", and Curio shows its own Install button.
+
+**Builder's calls:** Library viewer plays saved videos in-app (privacy-enhanced embed) and shows full text for posts; separate per-run request budgets for videos (24) and reads (20) to stay inside Cloudflare's 50-request limit; voice uses the browser's speech recognition (Chrome on Android supports en-IN and hi-IN), hidden where unsupported.
