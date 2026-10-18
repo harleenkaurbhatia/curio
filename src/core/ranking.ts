@@ -5,6 +5,7 @@ export type Candidate = {
   news: boolean; // news topics go stale faster
   publishedAt: number; // ms epoch
   channelScore: number; // 0–1 quality from Claude
+  kind?: 'video' | 'post'; // posts are text reads (Bluesky, HN, newsletters)
 };
 export type Weights = { topic: Record<string, number>; channel: Record<string, number> };
 
@@ -13,6 +14,8 @@ const MAX_AGE = { news: 3 * DAY, other: 21 * DAY };
 const HALF_LIFE = { news: 2 * DAY, other: 7 * DAY };
 // Each extra video from a topic within one batch counts for less, so batches stay mixed.
 const REPEAT_PENALTY = 0.7;
+// Reads are a seasoning, not the meal.
+const MAX_POST_SHARE = 0.4;
 
 export function isFresh(c: Candidate, now: number): boolean {
   return now - c.publishedAt <= (c.news ? MAX_AGE.news : MAX_AGE.other);
@@ -49,12 +52,17 @@ export function buildFeed<T extends Candidate>(cands: T[], w: Weights, opts: Fee
 
   const used = new Map<string, number>();
   const out: T[] = [];
-  let prevTopic = opts.lastTopic, prevChannel = opts.lastChannel;
+  let prevTopic = opts.lastTopic, prevChannel = opts.lastChannel, prevKind: Candidate['kind'];
+  let posts = 0;
+  const maxPosts = Math.floor(limit * MAX_POST_SHARE);
 
   while (out.length < limit && pool.length) {
     // Strictest rule first, relaxing only when nothing qualifies.
+    const kindOk = (c: T) => c.kind !== 'post' || (prevKind !== 'post' && posts < maxPosts);
     const tiers = [
-      pool.filter((c) => c.topic !== prevTopic && c.channelId !== prevChannel),
+      pool.filter((c) => kindOk(c) && c.topic !== prevTopic && c.channelId !== prevChannel),
+      pool.filter((c) => kindOk(c) && c.channelId !== prevChannel),
+      pool.filter(kindOk),
       pool.filter((c) => c.channelId !== prevChannel),
       pool,
     ];
@@ -72,6 +80,8 @@ export function buildFeed<T extends Candidate>(cands: T[], w: Weights, opts: Fee
     used.set(pick.topic, (used.get(pick.topic) ?? 0) + 1);
     prevTopic = pick.topic;
     prevChannel = pick.channelId;
+    prevKind = pick.kind;
+    if (pick.kind === 'post') posts++;
     pool = pool.filter((c) => c.id !== pick!.id);
   }
   return out;

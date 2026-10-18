@@ -101,3 +101,35 @@ describe('buildFeed', () => {
     expect(buildFeed([v, v, c('t', 'b')], W, opts)).toHaveLength(2);
   });
 });
+
+describe('buildFeed with reads', () => {
+  const opts = { now: NOW, limit: 10, seen: new Set<string>(), rng: seeded(3) };
+  const post = (topic: string, ch: string, age = 0.5) => c(topic, ch, age, { kind: 'post' });
+
+  it('never puts two reads back to back while videos remain', () => {
+    const pool = [
+      ...Array.from({ length: 8 }, (_, i) => post(`t${i % 4}`, `p${i}`, 0.1)), // fresher, would win on score
+      ...Array.from({ length: 6 }, (_, i) => c(`t${(i + 1) % 4}`, `v${i}`, 2)),
+    ];
+    const out = buildFeed(pool, W, { ...opts, limit: 12 });
+    for (let i = 1; i < out.length; i++) {
+      if (out[i].kind === 'post' && out[i - 1].kind === 'post') {
+        expect(out.slice(i).every((x) => x.kind === 'post')).toBe(true);
+      }
+    }
+  });
+
+  it('keeps reads to at most 40% of a batch when videos are plentiful', () => {
+    const pool = [
+      ...Array.from({ length: 10 }, (_, i) => post(`t${i % 5}`, `p${i}`, 0.1)),
+      ...Array.from({ length: 10 }, (_, i) => c(`t${(i + 2) % 5}`, `v${i}`, 1)),
+    ];
+    const out = buildFeed(pool, W, opts);
+    expect(out.filter((x) => x.kind === 'post').length).toBeLessThanOrEqual(4);
+  });
+
+  it('still serves reads when nothing else is left', () => {
+    const pool = [post('a', 'p1'), post('b', 'p2'), post('a', 'p3')];
+    expect(buildFeed(pool, W, opts)).toHaveLength(3);
+  });
+});
