@@ -1,78 +1,81 @@
 # Curio
 
-A private, Reels-style feed of **knowledge-only** YouTube Shorts, just for you. No stories, no followers, no like counts. Curio finds good creators for your topics, vets them with Claude, and serves a fresh, varied feed that learns from your 👍/👎.
+Short videos and reads that make you smarter, in a Reels-style swipe feed. No friends' stories, no follower or like counts, no ads, no trackers.
 
-- **Runs on:** Cloudflare Workers (free plan): the app, the API, a SQLite database (D1) and a background job every 15 minutes.
-- **Costs:** YouTube API free; Claude Haiku 5.5 about $0.50–1/month.
-- **Plays videos only** through the official YouTube player (privacy-enhanced `youtube-nocookie.com`). Nothing is downloaded or re-hosted.
+- **Feed:** YouTube Shorts from creators Curio finds and vets for your topics, mixed with text "reads" from Bluesky, Hacker News and quality newsletters and explainers (Quanta, Nature, Psyche, Aeon, Indian Express Explained, BBC Hindi and more). English, Hindi and Hinglish.
+- **On every item:** 👍 / 👎 (the feed learns), 🔖 Save, 🕒 Later, ↗ Share (WhatsApp and any app, with the original link), 💭 Thought (type or speak it in English or Hindi).
+- **Library:** Saved, Later and Thoughts, with in-app playback.
+- **Insights:** your time today and this week, streak, topic mix, totals. Private to you.
+- **Done for now:** ends a session with a calm summary.
+- **Accounts:** anyone can sign up with email and password. Each person has their own topics, languages, feed and history.
 
-## 1. Get your keys (one time, ~15 minutes)
+**Stack:** Cloudflare Workers (free plan) for the app, API, D1 (SQLite) database and a background job every 15 minutes, plus Claude Haiku 5.5 for vetting. Videos play only through the official YouTube player (`youtube-nocookie.com`). Nothing is downloaded or re-hosted.
 
-| Key | Where | Notes |
-|---|---|---|
-| `YOUTUBE_API_KEY` | [console.cloud.google.com](https://console.cloud.google.com) → new project → *APIs & Services* → *Library* → enable **YouTube Data API v3** → *Credentials* → *Create credentials* → **API key** | Free. Restrict the key to "YouTube Data API v3". |
-| `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com) → *Settings* → *API keys* | Add ~$5 of credit under *Billing*; it lasts months. |
-| `APP_PASSCODE` | You choose | What you type to unlock the app. |
-| `SESSION_SECRET` | Run `openssl rand -hex 32` | Signs your login cookie. |
+**Running cost:** YouTube API free; Claude roughly $1–3/month (vetting is shared across all users, so it barely grows with users); Cloudflare free.
 
-You'll also need a free [Cloudflare account](https://dash.cloudflare.com/sign-up).
+## 1. Keys (one time)
 
-## 2. Run it on your computer
+| Key | Where |
+|---|---|
+| `YOUTUBE_API_KEY` | [console.cloud.google.com](https://console.cloud.google.com): new project → *APIs & Services* → *Library* → enable **YouTube Data API v3** → *Credentials* → *Create credentials* → **API key**. Restrict it to that API. |
+| `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com) → *Settings* → *API keys*. Add ~$5 credit under *Billing*. |
+| `ADMIN_TOKEN` | Any long random string (`openssl rand -hex 16`). Lets you trigger a refresh by hand. |
+
+## 2. Run locally
 
 ```bash
 npm install
-cp .dev.vars.example .dev.vars   # then fill in your keys
+cp .dev.vars.example .dev.vars   # fill in the keys
 npm run db:local                 # create the local database
 npm run dev                      # http://localhost:8787
 ```
 
-Without API keys you can still try the app with demo videos: `npm run db:demo`.
+The background job only runs on Cloudflare. Locally, trigger it by hand (each call does one small slice of work):
 
-To fill it with real creators right away instead of waiting for the background job, unlock the app in a browser, then run this in the browser console a few times (each run does a small slice of work):
-
-```js
-await (await fetch('/api/admin/refresh', { method: 'POST' })).json()
+```bash
+curl -X POST localhost:8787/api/admin/refresh -H "x-admin-token: $ADMIN_TOKEN"
 ```
 
-## 3. Deploy
+Without keys, `npm run db:demo` adds a few demo videos so you can try the UI.
+
+## 3. Deploy (gives you the download link)
 
 ```bash
 npx wrangler login
-npx wrangler d1 create curio          # copy the database_id it prints into wrangler.toml
-npm run db:remote                     # create tables + starting topics
+npx wrangler d1 create curio          # paste the printed database_id into wrangler.toml
+npm run db:remote
 npx wrangler secret put YOUTUBE_API_KEY
 npx wrangler secret put ANTHROPIC_API_KEY
-npx wrangler secret put APP_PASSCODE
-npx wrangler secret put SESSION_SECRET
-npm run deploy                        # prints your https://curio.<you>.workers.dev URL
+npx wrangler secret put ADMIN_TOKEN
+npm run deploy                        # prints https://curio.<your-subdomain>.workers.dev
 ```
 
-The first creators show up within an hour as the background job works through your topics. The first day uses roughly 2,500 of YouTube's 10,000 daily units; after that, about 1,000 a day.
+That URL **is the download link**. Open it in Chrome on Android → sign up → tap **Install Curio** (Profile tab) or Chrome menu ⋮ → **Install app**. It installs like a normal app with its own icon and runs full screen.
 
-## 4. Install on Android
-
-Open your Curio URL in **Chrome** → unlock → menu ⋮ → **Add to Home screen** → **Install**.
+Content builds up over the first hour as the job discovers creators, vets them and screens posts.
 
 ## How it works
 
-1. **Discover** (at most once a day per topic, only for topics with fewer than 12 creators): one YouTube search in English and one in Hindi for Shorts from the last week or month. Channels that come up repeatedly go first.
-2. **Vet**: Claude Haiku 5.5 reads each channel's recent titles and scores it for consistency, clarity and credibility. It rejects clickbait, rage-bait, reposts, low credibility and lifestyle/flex content. Channels need a score of 0.6+ and an upload in the last 30 days.
-3. **Fetch**: every creator is rechecked about every 4 hours through their uploads playlist (1 unit each). Only videos of 3 minutes or less that are vertical count as Shorts.
-4. **Feed**: score = topic weight × creator weight × creator quality × freshness. Then a variety pass: no topic or creator back to back, extra videos from the same topic count for less, and every 5th slot explores a less-watched topic. Seen videos never come back. News expires after 3 days, everything else after 21.
-5. **Learn**: 👍/👎 nudge topic weights gently and creator weights more strongly. 👎 also skips to the next video.
+1. **Discover:** for followed topics that are short of creators, one YouTube search in English and one in Hindi (at most once a day per topic; search has its own 100/day quota). Bluesky people are found per topic the same way.
+2. **Vet:** Claude scores each channel or person on consistency, clarity and credibility, rejecting clickbait, rage-bait, reposts, low credibility and lifestyle/flex content. Every text post is screened individually and gets a one-line "why read".
+3. **Fetch:** each creator is rechecked about every 4 hours (YouTube uploads playlist, 1 unit), feeds every 2 hours. Videos must be 3 minutes or less and vertical.
+4. **Rank (per user):** topic weight × creator weight × quality × freshness. Then variety rules: no topic or creator back to back, never two reads in a row, reads at most 40% of a batch, every 5th slot explores a less-watched topic. Seen items never return. News expires after 3 days, everything else after 21.
+5. **Learn:** 👍/👎 nudge that user's topic and creator weights.
+
+Each 15-minute run does a capped slice of work (24 requests for videos, 20 for reads) to stay within Cloudflare's free-plan limits.
 
 ## Development
 
 ```bash
-npm test                         # unit tests: quota, Shorts detection, ranking, feedback, Claude output parsing
-node scripts/ui-check.mjs        # phone-width browser check (needs `npm run dev` + demo data)
-node scripts/icons.mjs           # re-render app icons from public/icon.svg
+npm test                         # 54 unit tests: ranking, quota, Shorts detection, feed parsers, Claude output parsing, passwords, insights
+node scripts/ui-check.mjs        # 26-step phone-width end-to-end check (needs npm run dev + demo data)
 ```
 
-Keys live only in `.dev.vars` (gitignored) locally and in Cloudflare secrets in production. Never commit them.
+Secrets live in `.dev.vars` (gitignored) locally and in Cloudflare secrets in production.
 
-## Roadmap
+## Not yet / next
 
-- **Phase 2:** Claude screens every video (drops rage-bait, clickbait, dubious health claims, reposts; stricter for health/news) and writes a one-line "why this matters"; learning from skips, rewatches, "more like this" and "not this creator"; modes (Catch up / Learn / Unwind) and topic mix.
-- **Phase 3:** saved shelf by topic, weekly recap, share-to-Curio "watch later" from YouTube/Instagram.
-- **Later:** "Read more" context and source links.
+- Sign in with Google and password-reset emails (need an OAuth client and a sending domain).
+- Claude screening of every **video** with a "why this matters" caption (posts already have it); skip and rewatch signals; Catch up / Learn / Unwind modes.
+- X posts (paid API, about $10–30/month) behind an optional key. LinkedIn has no official read access, so it isn't planned.
+- "Read more" context and source links.

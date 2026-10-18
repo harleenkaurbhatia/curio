@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0b0b0f">
+  <meta name="description" content="Curio: short videos and reads that make you smarter. No feeds of friends, no like counts.">
   <title>Curio</title>
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
@@ -11,54 +12,166 @@
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <!-- Passcode -->
-  <section id="login" class="screen center" hidden>
-    <div class="brand big">Curio</div>
-    <p class="muted">Only the good stuff.</p>
-    <form id="login-form">
-      <input id="passcode" type="password" inputmode="numeric" autocomplete="current-password" placeholder="Passcode" aria-label="Passcode" required>
-      <button type="submit">Unlock</button>
-      <p id="login-error" class="error" role="alert"></p>
+  <!-- ===== Sign in / up ===== -->
+  <section id="auth" class="screen center" hidden>
+    <img src="/icon.svg" alt="" width="64" height="64" class="logo">
+    <h1 class="brand big">Curio</h1>
+    <p class="muted">Short videos and reads that make you smarter.<br>No friends' stories. No like counts.</p>
+    <form id="auth-form" class="stack" novalidate>
+      <input id="auth-name" name="name" autocomplete="name" placeholder="Your name" aria-label="Your name" hidden>
+      <input id="auth-email" name="email" type="email" autocomplete="email" placeholder="Email" aria-label="Email" required>
+      <input id="auth-password" name="password" type="password" autocomplete="current-password" placeholder="Password" aria-label="Password" required minlength="8">
+      <button type="submit" class="primary" id="auth-submit">Sign in</button>
+      <p id="auth-error" class="error" role="alert"></p>
     </form>
+    <button id="auth-switch" class="link">New here? Create an account</button>
+    <button class="install-btn ghost" hidden>Install the app</button>
   </section>
 
-  <!-- Feed -->
-  <section id="feed-screen" class="screen" hidden>
-    <div id="player-wrap" aria-hidden="true"><div id="player"></div></div>
-    <div id="feed" aria-label="Video feed"></div>
-    <header class="topbar">
-      <span class="brand">Curio</span>
-      <button id="open-menu" class="icon-btn" aria-label="Topics and creators">☰</button>
-    </header>
-    <div id="sound-hint" class="pill" hidden>Tap for sound</div>
+  <!-- ===== Onboarding ===== -->
+  <section id="onboarding" class="screen scroll" hidden>
+    <div class="pad">
+      <p class="step-label">Step <span id="ob-step">1</span> of 2</p>
+      <div id="ob-topics">
+        <h1>What are you curious about?</h1>
+        <p class="muted">Pick a few. You can change these anytime.</p>
+        <div id="ob-topic-chips" class="chips"></div>
+      </div>
+      <div id="ob-langs" hidden>
+        <h1>Which languages?</h1>
+        <p class="muted">We'll find creators who speak them.</p>
+        <div id="ob-lang-chips" class="chips"></div>
+      </div>
+      <p id="ob-error" class="error" role="alert"></p>
+    </div>
+    <div class="sticky-cta"><button id="ob-next" class="primary wide">Continue</button></div>
   </section>
 
-  <!-- Topics & creators -->
-  <section id="menu" class="screen sheet" hidden>
-    <header class="sheet-head">
-      <nav class="tabs" role="tablist">
-        <button role="tab" data-tab="topics" aria-selected="true">Topics</button>
-        <button role="tab" data-tab="creators" aria-selected="false">Creators</button>
+  <!-- ===== App shell ===== -->
+  <div id="app" hidden>
+    <!-- Feed -->
+    <section id="view-feed" class="view">
+      <div id="player-wrap" aria-hidden="true"><div id="player"></div></div>
+      <div id="feed" aria-label="Feed"></div>
+      <header class="topbar">
+        <span class="brand">Curio</span>
+        <button id="done-btn" class="pill-btn">Done for now</button>
+      </header>
+      <div id="sound-hint" class="pill" hidden>Tap for sound</div>
+    </section>
+
+    <!-- Library -->
+    <section id="view-library" class="view scroll" hidden>
+      <header class="page-head"><h1>Library</h1>
+        <button id="new-thought" class="pill-btn">+ Thought</button></header>
+      <nav class="segmented" role="tablist" aria-label="Library sections">
+        <button role="tab" data-lib="saved" aria-selected="true">Saved</button>
+        <button role="tab" data-lib="later" aria-selected="false">Later</button>
+        <button role="tab" data-lib="thoughts" aria-selected="false">Thoughts</button>
       </nav>
-      <button id="close-menu" class="icon-btn" aria-label="Close">✕</button>
-    </header>
-    <div id="tab-topics" class="tab-body">
-      <form id="add-topic" class="row">
-        <input id="topic-name" placeholder="Add a topic, e.g. Space" maxlength="60" required aria-label="New topic">
-        <select id="topic-mode" aria-label="Mode">
-          <option value="learn">Learn</option>
-          <option value="catchup">Catch up</option>
-          <option value="unwind">Unwind</option>
-        </select>
-        <button type="submit">Add</button>
-      </form>
-      <ul id="topic-list" class="list"></ul>
+      <div id="library-list" class="pad-x"></div>
+    </section>
+
+    <!-- Insights -->
+    <section id="view-insights" class="view scroll" hidden>
+      <header class="page-head"><h1>Your insights</h1></header>
+      <div id="insights" class="pad-x"></div>
+    </section>
+
+    <!-- Profile -->
+    <section id="view-profile" class="view scroll" hidden>
+      <header class="page-head"><h1 id="profile-name">You</h1></header>
+      <div class="pad-x">
+        <p id="profile-email" class="muted small"></p>
+        <button class="install-btn primary wide" hidden>Install Curio on this phone</button>
+
+        <h2 class="section-title">Languages</h2>
+        <div id="lang-chips" class="chips"></div>
+
+        <h2 class="section-title">Topics</h2>
+        <form id="add-topic" class="row">
+          <input id="topic-name" placeholder="Add a topic, e.g. Space" maxlength="40" required aria-label="New topic">
+          <select id="topic-mode" aria-label="Mode">
+            <option value="learn">Learn</option>
+            <option value="catchup">News</option>
+            <option value="unwind">Unwind</option>
+          </select>
+          <button type="submit" class="primary">Add</button>
+        </form>
+        <p id="topic-error" class="error" role="alert"></p>
+        <ul id="topic-list" class="list"></ul>
+
+        <h2 class="section-title">Creators & sources</h2>
+        <p class="muted small">Found and vetted automatically. Hide any you don't want.</p>
+        <div id="creator-list"></div>
+
+        <h2 class="section-title">Account</h2>
+        <div class="stack">
+          <button id="logout" class="ghost wide">Sign out</button>
+          <button id="delete-account" class="danger wide">Delete account</button>
+        </div>
+        <p class="muted small center-text">Your history, likes and thoughts are private to you. Curio has no ads and no trackers.</p>
+      </div>
+    </section>
+
+    <!-- Bottom tabs -->
+    <nav id="tabbar" aria-label="Main">
+      <button data-view="feed" aria-current="page" aria-label="Feed">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 4l8 7.5V20a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1z"/></svg><span>Feed</span></button>
+      <button data-view="library" aria-label="Library">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z"/></svg><span>Library</span></button>
+      <button data-view="insights" aria-label="Insights">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V12M12 20V5M19 20v-9"/></svg><span>Insights</span></button>
+      <button data-view="profile" aria-label="Profile">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg><span>You</span></button>
+    </nav>
+  </div>
+
+  <!-- ===== Sheets ===== -->
+  <div id="scrim" hidden></div>
+
+  <section id="thought-sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="thought-title" hidden>
+    <h2 id="thought-title">Your thought</h2>
+    <p id="thought-context" class="muted small truncate"></p>
+    <textarea id="thought-text" rows="5" placeholder="An idea, a question, a connection…" aria-label="Your thought"></textarea>
+    <div class="row between">
+      <div class="row" id="voice-controls">
+        <button id="mic" class="mic" aria-label="Speak your thought" aria-pressed="false">🎙️</button>
+        <div class="segmented small" role="radiogroup" aria-label="Speaking language">
+          <button role="radio" data-lang="en-IN" aria-checked="true">EN</button>
+          <button role="radio" data-lang="hi-IN" aria-checked="false">हिं</button>
+        </div>
+      </div>
+      <button id="thought-save" class="primary">Save</button>
     </div>
-    <div id="tab-creators" class="tab-body" hidden>
-      <p class="muted small">Found and vetted automatically. Remove any you don't want.</p>
-      <div id="creator-list"></div>
+    <p id="mic-status" class="muted small" aria-live="polite"></p>
+  </section>
+
+  <section id="share-sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="share-title" hidden>
+    <h2 id="share-title">Share</h2>
+    <p id="share-context" class="muted small truncate"></p>
+    <div class="share-grid">
+      <a id="share-wa" class="share-opt" target="_blank" rel="noopener">WhatsApp</a>
+      <a id="share-tg" class="share-opt" target="_blank" rel="noopener">Telegram</a>
+      <a id="share-x" class="share-opt" target="_blank" rel="noopener">X</a>
+      <button id="share-copy" class="share-opt">Copy link</button>
     </div>
   </section>
+
+  <section id="viewer-sheet" class="sheet tall" role="dialog" aria-modal="true" aria-labelledby="viewer-title" hidden>
+    <div class="row between"><h2 id="viewer-title" class="truncate">Item</h2><button class="icon-btn close-sheet" aria-label="Close">✕</button></div>
+    <div id="viewer-body"></div>
+  </section>
+
+  <section id="summary" class="screen center" hidden>
+    <div class="big-emoji">🌱</div>
+    <h1>Nice break.</h1>
+    <div id="summary-stats" class="summary-stats"></div>
+    <button id="summary-continue" class="ghost">Keep going</button>
+    <button id="summary-close" class="primary">See you later</button>
+  </section>
+
+  <div id="toast" role="status" aria-live="polite" hidden></div>
 
   <script src="/app.js" type="module"></script>
 </body>
