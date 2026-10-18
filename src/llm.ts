@@ -13,7 +13,9 @@ export type ChannelForReview = {
 const SYSTEM = `You curate a private, knowledge-only short-video feed for one person in India who watches English, Hindi and Hinglish.
 They want smart, accurate, fun creators. They are escaping social-media comparison, so lifestyle content is unwelcome.
 
-Score each YouTube channel from 0 to 1 for this feed, judging only from its recent video titles and stats:
+Score each YouTube channel from 0 to 1 for this feed, judging only from its recent video titles and stats.
+Anchors: 0.8+ = excellent explainer/expert. 0.6 = solid and trustworthy, worth including. 0.4 = mixed or thin. 0.2 = poor.
+Criteria:
 - consistency: posts regularly, recently, on the topic
 - clarity: titles promise explanation or insight, not vague hype
 - credibility: sounds like a journalist, scientist, doctor, chef or expert; health and news need a higher bar
@@ -50,6 +52,8 @@ export type PostForReview = { id: string; topic: string; source: string; author:
 
 const POST_SYSTEM = `You pick text posts and articles for a knowledge feed read in short breaks by curious people in India (English, Hindi, Hinglish).
 Score each item 0 to 1: is it genuinely interesting, accurate and worth 30 seconds? Reward new facts, clear explanations, original insight, useful news context.
+Anchors: 0.8+ = remarkable, would tell a friend. 0.6 = solid, informative, worth showing. 0.4 = routine or thin (minor corporate news, listicles). 0.2 = filler.
+Credible news and explainers from established outlets are usually 0.55–0.75. Don't penalise a topic for being serious or regional.
 Health and news need a higher bar of credibility. Reject (set reject_reason): ${POST_REJECT_REASONS.join(', ')}.
 lifestyle_flex = bragging, luxury, hustle-motivation, "I made $X". self_promo = mainly selling something. shallow = no real information.
 hook: one plain line (under 14 words) saying why it's worth reading, in the item's language. No hype, no emojis.`;

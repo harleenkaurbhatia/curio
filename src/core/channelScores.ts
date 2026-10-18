@@ -1,4 +1,4 @@
-export const ACCEPT_AT = 0.6;
+export const ACCEPT_AT = 0.55;
 export const REJECT_REASONS = ['clickbait', 'rage_bait', 'lifestyle_flex', 'reposts', 'low_credibility', 'off_topic', 'inactive'] as const;
 
 export type ChannelScore = { id: string; score: number; language: string; accept: boolean; reason: string };

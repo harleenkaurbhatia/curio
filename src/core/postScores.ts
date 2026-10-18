@@ -1,4 +1,5 @@
-export const POST_ACCEPT_AT = 0.65;
+// Calibrated on real output (2026-10-18): Haiku scores solid explainers ~0.55–0.7.
+export const POST_ACCEPT_AT = 0.5;
 export const POST_REJECT_REASONS = ['clickbait', 'rage_bait', 'lifestyle_flex', 'self_promo', 'low_credibility', 'dubious_health', 'off_topic', 'shallow'] as const;
 
 export type PostScore = { id: string; score: number; accept: boolean; hook: string };
