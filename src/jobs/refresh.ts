@@ -1,0 +1,142 @@
+import { CallLimit, CallLimitReached, QuotaBudget, QuotaExceeded } from '../core/quota';
+import { isShort, parseDuration } from '../core/shorts';
+import { YouTube } from '../youtube';
+import { Curator, type ChannelForReview } from '../llm';
+import { Repo, type NewVideo } from '../db';
+
+export type Env = {
+  DB: D1Database;
+  ASSETS: Fetcher;
+  YOUTUBE_API_KEY: string;
+  ANTHROPIC_API_KEY: string;
+  APP_PASSCODE: string;
+  SESSION_SECRET: string;
+};
+
+const DAY = 86_400_000;
+const TARGET_CHANNELS_PER_TOPIC = 12;
+const NEW_CANDIDATES_PER_TOPIC = 15;
+const SCORE_GROUP = 15;
+const MAX_SCORED_PER_RUN = 30;
+// Free plan allows 50 outbound requests per run; keep headroom.
+const CALLS_PER_RUN = 40;
+const REDISCOVER_AFTER = DAY;
+const REFETCH_AFTER = 4 * 60 * 60 * 1000;
+
+export type RefreshReport = { discovered: number; scored: number; accepted: number; newVideos: number; quotaUsed: number; stoppedEarly?: string };
+
+export async function refresh(env: Env, now = Date.now()): Promise<RefreshReport> {
+  const repo = new Repo(env.DB);
+  const budget = new QuotaBudget(await repo.quotaUsed());
+  const calls = new CallLimit(CALLS_PER_RUN);
+  const yt = new YouTube(env.YOUTUBE_API_KEY, budget, calls);
+  const report: RefreshReport = { discovered: 0, scored: 0, accepted: 0, newVideos: 0, quotaUsed: 0 };
+
+  try {
+    report.discovered = await discover(repo, yt, now);
+    Object.assign(report, await scorePending(repo, new Curator(env.ANTHROPIC_API_KEY, calls), now));
+    report.newVideos = await fetchNewShorts(repo, yt, now);
+  } catch (e) {
+    if (!(e instanceof QuotaExceeded || e instanceof CallLimitReached)) throw e;
+    report.stoppedEarly = e.message; // keep everything fetched so far
+  } finally {
+    await repo.saveQuota(budget.used);
+    report.quotaUsed = budget.used;
+  }
+  return report;
+}
+
+// Search (100 units) only for topics that are short of creators.
+async function discover(repo: Repo, yt: YouTube, now: number): Promise<number> {
+  const [topics, counts, known] = await Promise.all([repo.topics(true), repo.activeCountByTopic(), repo.knownChannelIds()]);
+  let added = 0;
+  for (const t of topics) {
+    if ((counts.get(t.id) ?? 0) >= TARGET_CHANNELS_PER_TOPIC) continue;
+    if (t.last_discovered_at && now - t.last_discovered_at < REDISCOVER_AFTER) continue;
+    const days = t.mode === 'catchup' ? 7 : 30;
+    const hits = [
+      ...(await yt.searchShorts(t.query_en, 'en', days)),
+      ...(await yt.searchShorts(t.query_hi, 'hi', days)),
+    ];
+    // Channels that show up more than once in search are better bets.
+    const freq = new Map<string, number>();
+    for (const h of hits) if (!known.has(h.channelId)) freq.set(h.channelId, (freq.get(h.channelId) ?? 0) + 1);
+    const ids = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, NEW_CANDIDATES_PER_TOPIC).map(([id]) => id);
+    await repo.markDiscovered(t.id, now); // searched today, even if a later step runs out of budget
+    if (!ids.length) continue;
+
+    const infos = await yt.channels(ids);
+    for (const c of infos) {
+      const recent = await yt.latestUploads(c.uploads, 10).catch((e) => {
+        if (e instanceof QuotaExceeded || e instanceof CallLimitReached) throw e;
+        return [];
+      });
+      await repo.insertChannels([{
+        id: c.id, title: c.title, topic_id: t.id, thumb: c.thumb, uploads_playlist: c.uploads, discovered_at: now,
+        sample_titles: JSON.stringify({ subscribers: c.subscribers, recent: recent.map((r) => ({ title: r.title, publishedAt: r.publishedAt })) }),
+      }]);
+      known.add(c.id);
+      added++;
+    }
+  }
+  return added;
+}
+
+async function scorePending(repo: Repo, curator: Curator, now: number) {
+  const [pending, topics] = await Promise.all([repo.channels('pending'), repo.topics()]);
+  const topicName = new Map(topics.map((t) => [t.id, t.name]));
+  const batch: ChannelForReview[] = pending.slice(0, MAX_SCORED_PER_RUN).map((c) => {
+    const s = JSON.parse(c.sample_titles || '{}');
+    return {
+      id: c.id, title: c.title, topic: topicName.get(c.topic_id) ?? '', subscribers: s.subscribers ?? 0,
+      recentTitles: (s.recent ?? []).map((r: any) => ({ title: r.title, daysAgo: Math.round((now - r.publishedAt) / DAY) })),
+    };
+  });
+  let scored = 0, accepted = 0;
+  for (let i = 0; i < batch.length; i += SCORE_GROUP) {
+    const group = batch.slice(i, i + SCORE_GROUP);
+    const scores = await curator.scoreChannels(group);
+    // Consistency floor: nothing posted in the last 30 days means not active enough.
+    for (const s of scores) {
+      const ch = group.find((g) => g.id === s.id)!;
+      if (!ch.recentTitles.some((t) => t.daysAgo <= 30)) { s.accept = false; s.reason = `inactive: ${s.reason}`; }
+    }
+    await repo.saveScores(scores);
+    scored += scores.length;
+    accepted += scores.filter((s) => s.accept).length;
+  }
+  return { scored, accepted };
+}
+
+// 1 unit per creator + 1 unit per 50 new videos. Least recently checked creators go first.
+async function fetchNewShorts(repo: Repo, yt: YouTube, now: number): Promise<number> {
+  const active = (await repo.channels('active'))
+    .filter((c) => !c.last_fetched_at || now - c.last_fetched_at >= REFETCH_AFTER)
+    .sort((a, b) => (a.last_fetched_at ?? 0) - (b.last_fetched_at ?? 0));
+  let added = 0;
+  for (const c of active) {
+    let uploads;
+    try {
+      uploads = await yt.latestUploads(c.uploads_playlist, 8);
+    } catch (e) {
+      if (e instanceof QuotaExceeded || e instanceof CallLimitReached) throw e;
+      continue; // deleted/private playlist: skip this creator
+    }
+    const recent = uploads.filter((u) => now - u.publishedAt <= 21 * DAY);
+    const known = await repo.knownVideoIds(recent.map((u) => u.id));
+    const fresh = recent.filter((u) => !known.has(u.id));
+    if (fresh.length) {
+      const details = new Map((await yt.videoDetails(fresh.map((u) => u.id))).map((d) => [d.id, d]));
+      const shorts: NewVideo[] = fresh.flatMap((u) => {
+        const d = details.get(u.id);
+        return d && isShort(d)
+          ? [{ id: u.id, channel_id: c.id, topic_id: c.topic_id, title: u.title, published_at: u.publishedAt, duration_s: parseDuration(d.duration) }]
+          : [];
+      });
+      await repo.insertVideos(shorts);
+      added += shorts.length;
+    }
+    await repo.markFetched(c.id, now);
+  }
+  return added;
+}

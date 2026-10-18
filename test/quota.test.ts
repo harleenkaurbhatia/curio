@@ -26,3 +26,14 @@ describe('QuotaBudget', () => {
     expect(q.used).toBe(9000);
   });
 });
+
+import { CallLimit, CallLimitReached } from '../src/core/quota';
+
+describe('CallLimit', () => {
+  it('allows up to max calls then throws', () => {
+    const l = new CallLimit(2);
+    l.take(); l.take();
+    expect(l.left).toBe(0);
+    expect(() => l.take()).toThrow(CallLimitReached);
+  });
+});

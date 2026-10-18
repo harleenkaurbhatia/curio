@@ -34,9 +34,9 @@ export type FeedOptions = {
   lastChannel?: string;
 };
 
-export function buildFeed(cands: Candidate[], w: Weights, opts: FeedOptions): Candidate[] {
+export function buildFeed<T extends Candidate>(cands: T[], w: Weights, opts: FeedOptions): T[] {
   const { now, limit, seen, explore = 0.2, rng = Math.random } = opts;
-  const byId = new Map<string, Candidate>();
+  const byId = new Map<string, T>();
   for (const c of cands) if (!seen.has(c.id) && isFresh(c, now)) byId.set(c.id, c);
   let pool = [...byId.values()];
   if (!pool.length) return [];
@@ -48,7 +48,7 @@ export function buildFeed(cands: Candidate[], w: Weights, opts: FeedOptions): Ca
   const exploreEvery = explore > 0 ? Math.round(1 / explore) : Infinity;
 
   const used = new Map<string, number>();
-  const out: Candidate[] = [];
+  const out: T[] = [];
   let prevTopic = opts.lastTopic, prevChannel = opts.lastChannel;
 
   while (out.length < limit && pool.length) {
@@ -59,9 +59,9 @@ export function buildFeed(cands: Candidate[], w: Weights, opts: FeedOptions): Ca
       pool,
     ];
     const eligible = tiers.find((t) => t.length)!;
-    const adjusted = (c: Candidate) => score.get(c.id)! * REPEAT_PENALTY ** (used.get(c.topic) ?? 0);
+    const adjusted = (c: T) => score.get(c.id)! * REPEAT_PENALTY ** (used.get(c.topic) ?? 0);
 
-    let pick: Candidate | undefined;
+    let pick: T | undefined;
     if ((out.length + 1) % exploreEvery === 0) {
       const explorers = eligible.filter((c) => tw(c.topic) < median);
       if (explorers.length) pick = explorers[Math.floor(rng() * explorers.length)];

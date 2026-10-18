@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { applyFeedback } from '../src/core/feedback';
+import type { Weights } from '../src/core/ranking';
 
-const empty = () => ({ topic: {}, channel: {} });
+const empty = (): Weights => ({ topic: {}, channel: {} });
 
 describe('applyFeedback', () => {
   it('👍 raises and 👎 lowers topic and creator weights from a default of 1', () => {

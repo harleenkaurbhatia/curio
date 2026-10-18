@@ -22,3 +22,17 @@ export class QuotaBudget {
     this.#used += COSTS[op] * calls;
   }
 }
+
+export class CallLimitReached extends Error {
+  constructor() { super('Per-run request limit reached; continuing next run'); }
+}
+
+// Cloudflare's free plan caps outbound requests per invocation, so each run does a bounded slice of work.
+export class CallLimit {
+  constructor(private max: number) {}
+  get left() { return this.max; }
+  take() {
+    if (this.max <= 0) throw new CallLimitReached();
+    this.max--;
+  }
+}

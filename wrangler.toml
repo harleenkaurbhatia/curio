@@ -14,6 +14,6 @@ database_name = "curio"
 database_id = "REPLACE_AFTER_wrangler_d1_create"
 migrations_dir = "migrations"
 
-# Refresh every 4 hours so news stays fresh across the day.
+# Small refresh slices every 15 minutes; each creator is rechecked about every 4 hours.
 [triggers]
-crons = ["0 */4 * * *"]
+crons = ["*/15 * * * *"]
