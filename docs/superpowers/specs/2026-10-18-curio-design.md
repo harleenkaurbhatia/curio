@@ -63,3 +63,15 @@ Instagram is fun but its stories and lifestyle content cause comparison. The own
 **Download link.** The deployed HTTPS URL is the download link: Chrome offers "Install app", and Curio shows its own Install button.
 
 **Builder's calls:** Library viewer plays saved videos in-app (privacy-enhanced embed) and shows full text for posts; separate per-run request budgets for videos (24) and reads (20) to stay inside Cloudflare's 50-request limit; voice uses the browser's speech recognition (Chrome on Android supports en-IN and hi-IN), hidden where unsupported.
+
+## Round 2b: multi-user (owner decision, 2026-10-18)
+
+This replaces the single-user/passcode decision.
+- **Anyone can sign up** (email + password). Each user has their own topics, languages, feed, seen history, 👍/👎 weights, saves, later list, thoughts and blocked creators.
+- **Shared catalog:** topics, creators/feeds, videos, posts and all Claude vetting are shared, so cost doesn't grow per user. A topic is refreshed only if someone follows it. Custom topics are added to the shared catalog (max 5 per user, to protect the YouTube quota).
+- **Removing a creator** hides them for that user only.
+- **Personal insights only:** each user sees their own time spent (today / week), items, streak, topic mix, likes, saves and thoughts. No owner dashboard, no third-party analytics.
+- **Share:** phone share sheet with the original public link (unchanged).
+- **Privacy:** passwords hashed (PBKDF2-SHA256); revocable server-side sessions; users' data visible only to themselves.
+
+Builder's calls: email/password now, Google sign-in and reset emails later (need OAuth client / a sending domain); `ADMIN_TOKEN` header protects the manual refresh endpoint; language preference filters creators by detected language (unknown passes).
