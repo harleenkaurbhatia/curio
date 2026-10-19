@@ -2,7 +2,7 @@
 
 Short videos and reads that make you smarter, in a Reels-style swipe feed. No friends' stories, no follower or like counts, no ads, no trackers.
 
-- **Feed:** YouTube Shorts, plus full 2–20 min videos for topics like recipes, science and health, from well-known creators and ones Curio finds and vets, mixed with text "reads" from Bluesky, Hacker News and quality newsletters and explainers (Quanta, Nature, Psyche, Aeon, Indian Express Explained, BBC Hindi and more). English, Hindi and Hinglish.
+- **Feed:** YouTube Shorts, plus full 2–20 min videos for topics like recipes, science and health, from well-known creators and ones Curio finds and vets, mixed with text "reads" from Bluesky, Hacker News and quality newsletters, Substacks and explainers (Quanta, Nature, Psyche, Aeon, Indian Express Explained, BBC Hindi and more). English, Hindi and Hinglish.
 - **On every item:** 👍 / 👎 (the feed learns), 🔖 Save, 🕒 Later, ↗ Share (WhatsApp and any app, with the original link), 💭 Thought (type or speak it in English or Hindi).
 - **Library:** Saved, Later and Thoughts, with in-app playback.
 - **Insights:** your time today and this week, streak, topic mix, totals. Private to you.
