@@ -7,6 +7,9 @@ export type ChannelInfo = { id: string; title: string; thumb: string | null; upl
 export type PlaylistVideo = { id: string; title: string; description: string; publishedAt: number };
 export type VideoDetails = { id: string; duration: string; embedWidth?: number; embedHeight?: number; views?: number; likes?: number };
 
+// Google's search bucket ran out (or was refused). Discovery waits for tomorrow; everything else carries on.
+export class SearchUnavailable extends Error {}
+
 export class YouTube {
   constructor(private key: string, private budget: QuotaBudget, private calls: CallLimit) {}
 
@@ -15,7 +18,10 @@ export class YouTube {
     this.budget.spend(op); // throws QuotaExceeded before any call we can't afford
     const qs = new URLSearchParams({ ...params, key: this.key });
     const res = await fetch(`${BASE}/${path}?${qs}`);
-    if (!res.ok) throw new Error(`YouTube ${path} ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    if (!res.ok) {
+      const msg = `YouTube ${path} ${res.status}: ${(await res.text()).slice(0, 200)}`;
+      throw op === 'search' && (res.status === 429 || res.status === 403) ? new SearchUnavailable(msg) : new Error(msg);
+    }
     return res.json() as Promise<T>;
   }
 

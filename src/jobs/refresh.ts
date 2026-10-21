@@ -1,7 +1,7 @@
 import { curatedScore } from '../core/channelScores';
 import { CallLimit, CallLimitReached, QuotaBudget, QuotaExceeded } from '../core/quota';
 import { classifyVideo, parseDuration, fullVideoId, likeRatio } from '../core/shorts';
-import { YouTube } from '../youtube';
+import { YouTube, SearchUnavailable } from '../youtube';
 import { Curator, type ChannelForReview } from '../llm';
 import { Repo, type NewVideo } from '../db';
 
@@ -65,12 +65,18 @@ async function discover(repo: Repo, yt: YouTube, now: number, report: RefreshRep
     if ((counts.get(t.id) ?? 0) >= TARGET_CHANNELS_PER_TOPIC) continue;
     if (t.last_discovered_at && now - t.last_discovered_at < REDISCOVER_AFTER) continue;
     const days = t.mode === 'catchup' ? 7 : 30;
-    const hits = [
-      ...(await yt.searchShorts(t.query_en, 'en', days)),
-      ...(await yt.searchShorts(t.query_hi, 'hi', days)),
-      // Full videos (4–20 min) for topics like recipes, from the same kind of creators.
-      ...(t.long_videos ? await yt.searchShorts(t.query_en, 'en', 90, 'medium') : []),
-    ];
+    let hits;
+    try {
+      hits = [
+        ...(await yt.searchShorts(t.query_en, 'en', days)),
+        ...(await yt.searchShorts(t.query_hi, 'hi', days)),
+        // Full videos (4–20 min) for topics like recipes, from the same kind of creators.
+        ...(t.long_videos ? await yt.searchShorts(t.query_en, 'en', 90, 'medium') : []),
+      ];
+    } catch (e) {
+      if (e instanceof SearchUnavailable) return; // out of searches today: skip discovery, keep the rest of the run
+      throw e;
+    }
     // Channels that show up more than once in search are better bets.
     const freq = new Map<string, number>();
     for (const h of hits) if (!known.has(h.channelId)) freq.set(h.channelId, (freq.get(h.channelId) ?? 0) + 1);
