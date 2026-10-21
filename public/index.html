@@ -9,13 +9,16 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" href="/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Grand+Hotel&display=swap">
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
   <!-- ===== Install gate: Curio only runs as an installed app ===== -->
   <section id="install-gate" class="screen center" hidden>
     <img src="/icon.svg" alt="" width="64" height="64" class="logo">
-    <h1 class="brand big">Curio</h1>
+    <h1 class="brand big wordmark">Curio</h1>
     <p class="muted">Short videos and reads that make you smarter.<br>No friends' stories. No like counts.</p>
     <button class="install-btn primary wide">Install Curio</button>
     <p id="gate-steps" class="muted small"></p>
@@ -25,7 +28,7 @@
   <!-- ===== Sign in / up ===== -->
   <section id="auth" class="screen center" hidden>
     <img src="/icon.svg" alt="" width="64" height="64" class="logo">
-    <h1 class="brand big">Curio</h1>
+    <h1 class="brand big wordmark">Curio</h1>
     <p class="muted">Short videos and reads that make you smarter.<br>No friends' stories. No like counts.</p>
     <form id="auth-form" class="stack" novalidate>
       <input id="auth-name" name="name" autocomplete="name" placeholder="Your name" aria-label="Your name" hidden>
@@ -66,7 +69,7 @@
       <div id="player-wrap" aria-hidden="true"><div id="player"></div></div>
       <div id="feed" aria-label="Feed"></div>
       <header class="topbar">
-        <span class="brand">Curio</span>
+        <span class="brand wordmark">Curio</span>
         <span class="row">
           <button id="done-btn" class="pill-btn">Done for now</button>
           <button class="install-btn icon-btn" hidden aria-label="Install Curio"><svg class="ic" aria-hidden="true"><use href="/icons.svg#download"/></svg></button>

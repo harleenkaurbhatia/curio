@@ -34,6 +34,9 @@ h2 { font-size: 18px; margin: 0; }
 .pad-x { padding: 0 16px 32px; }
 .brand { font-weight: 800; letter-spacing: -0.02em; }
 .brand.big { font-size: 40px; margin: 0; }
+/* Script wordmark like Instagram's (Grand Hotel is the closest free match to its Billabong-style logo). */
+.wordmark { font-family: "Grand Hotel", cursive; font-weight: 400; letter-spacing: 0; font-size: 30px; line-height: 1; }
+.brand.big.wordmark { font-size: 56px; }
 .logo { border-radius: 16px; }
 .muted { color: var(--muted); }
 .small { font-size: 14px; }
