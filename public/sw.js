@@ -1,5 +1,5 @@
 // Caches the app shell only. API responses and videos are never cached.
-const CACHE = 'curio-shell-v5';
+const CACHE = 'curio-shell-v6';
 const SHELL = ['/', '/index.html', '/app.js', '/styles.css', '/manifest.webmanifest', '/icon.svg', '/icons.svg', '/icon-192.png'];
 
 self.addEventListener('install', (e) => e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())));

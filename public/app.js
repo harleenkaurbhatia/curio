@@ -88,11 +88,25 @@ window.addEventListener('beforeinstallprompt', (e) => {
   $$('.install-btn').forEach((b) => (b.hidden = false));
 });
 window.addEventListener('appinstalled', () => { $$('.install-btn').forEach((b) => (b.hidden = true)); toast('Curio installed'); });
+// Always offer it outside the installed app: iOS and in-app browsers never fire beforeinstallprompt.
+const installed = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+if (!installed) $$('.install-btn').forEach((b) => (b.hidden = false));
+function installSteps() {
+  const ua = navigator.userAgent;
+  if (/Instagram|FBAN|FBAV|WhatsApp|Line\//i.test(ua)) return 'Open this page in Chrome (or Safari on iPhone) first: tap ⋮ or the share icon, then "Open in browser". Then tap Install again.';
+  if (/iPhone|iPad|iPod/i.test(ua)) return 'In Safari, tap the Share button, then "Add to Home Screen".';
+  if (/Android/i.test(ua)) return 'In Chrome, tap ⋮ (top right), then "Install app" or "Add to Home screen".';
+  return 'In Chrome or Edge, click the install icon at the right end of the address bar, or open the ⋮ menu and choose "Install Curio".';
+}
 $$('.install-btn').forEach((b) => (b.onclick = async () => {
-  if (!installPrompt) return;
-  installPrompt.prompt();
-  await installPrompt.userChoice;
-  installPrompt = null;
+  if (installPrompt) {
+    installPrompt.prompt();
+    await installPrompt.userChoice;
+    installPrompt = null;
+    return;
+  }
+  $('#install-steps').textContent = installSteps();
+  openSheet('#install-sheet');
 }));
 
 // ---------- Auth ----------
