@@ -223,7 +223,7 @@ window.onYouTubeIframeAPIReady = () => {
       onStateChange: (e) => {
         const slide = state.queue[state.activeIndex]?.node;
         if (e.data === YT.PlayerState.PLAYING) { $('#player-wrap').classList.add('on'); slide?.classList.add('playing'); }
-        if (e.data === YT.PlayerState.ENDED) { player.seekTo(0); player.playVideo(); } // loop like Reels
+        if (e.data === YT.PlayerState.ENDED) { slide?.classList.add('ended'); player.seekTo(0); player.playVideo(); } // offer the full video, keep looping like Reels
       },
     },
   });
@@ -282,18 +282,20 @@ function videoSlide(item) {
     tap,
     el('div', { className: 'shade' }),
     el('div', { className: 'meta' },
-      el('div', { className: 'who' },
+      el('div', { className: 'who', role: 'button', tabIndex: 0, onclick: () => openProfile(item.sourceId) },
         el('span', { className: 'ava', textContent: initial(item.source) }),
         el('strong', { className: 'truncate', textContent: item.source }),
         el('span', { className: 'chip', textContent: item.topicName })),
       el('h2', { textContent: item.title }),
-      el('div', { className: 'by', textContent: `${item.vertical === false ? 'Video' : 'Short'} · ${ago(item.publishedAt)}` })),
+      el('div', { className: 'by', textContent: `${item.vertical === false ? 'Video' : 'Short'} · ${ago(item.publishedAt)}` }),
+      item.fullUrl && el('a', { className: 'full-btn', href: item.fullUrl, target: '_blank', rel: 'noopener' },
+        item.hasFull || item.vertical === false ? 'View full video' : 'Watch on YouTube', icon('arrow-right', 'sm'))),
     actionRail(item));
 }
 
 function readSlide(item) {
   const card = el('div', { className: 'card' },
-    el('div', { className: 'who' },
+    el('div', { className: 'who', role: 'button', tabIndex: 0, onclick: (e) => { e.stopPropagation(); openProfile(item.sourceId); } },
       el('span', { className: 'ava', textContent: initial(item.source) }),
       el('div', { className: 'grow' },
         el('strong', { className: 'truncate', textContent: item.source }),
@@ -357,6 +359,7 @@ function activate(index) {
   $('#player-wrap').classList.toggle('wide', item.vertical === false);
   if (item.kind === 'video') play(item.id);
   else if (playerReady) { wantId = null; player.pauseVideo(); }
+  $('#mute-btn').hidden = item.kind !== 'video';
   $('#sound-hint').hidden = !(item.kind === 'video' && state.muted && !state.hintShown);
   if (item.kind === 'video' && state.muted && !state.hintShown) setTimeout(() => { state.hintShown = true; $('#sound-hint').hidden = true; }, 4000);
   if (state.queue.length - index <= 3) loadMore();
@@ -390,13 +393,17 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
+function setMuted(m) {
+  state.muted = m;
+  $('#sound-hint').hidden = true;
+  if (playerReady) m ? player.mute() : player.unMute();
+  $('#mute-btn use').setAttribute('href', `/icons.svg#${m ? 'volume-x' : 'volume-2'}`);
+  $('#mute-btn').setAttribute('aria-label', m ? 'Turn sound on' : 'Mute');
+}
+$('#mute-btn').onclick = () => setMuted(!state.muted);
+
 function onTap() {
-  if (state.muted) {
-    state.muted = false;
-    $('#sound-hint').hidden = true;
-    if (playerReady) player.unMute();
-    return;
-  }
+  if (state.muted) return setMuted(false);
   if (!playerReady) return;
   player.getPlayerState() === YT.PlayerState.PLAYING ? player.pauseVideo() : player.playVideo();
 }
@@ -595,10 +602,10 @@ $('#thought-save').onclick = async () => {
   const text = $('#thought-text').value.trim();
   if (!text) { $('#mic-status').textContent = 'Write or say something first.'; return; }
   try {
-    await api('/api/notes', { method: 'POST', body: { text, itemId: thoughtItem?.id, item: thoughtItem ? snapshotOf(thoughtItem) : undefined } });
+    await api('/api/notes', { method: 'POST', body: { text, itemId: thoughtItem?.id, item: thoughtItem ? { ...snapshotOf(thoughtItem), sourceId: thoughtItem.sourceId, topicId: thoughtItem.topicId } : undefined } });
     state.session.thoughts++;
     closeSheets();
-    toast('Thought saved');
+    toast('Saved. Curio will tune your feed to it');
     if (!$('#view-library').hidden) renderLibrary();
   } catch (err) {
     $('#mic-status').textContent = err.message;
@@ -716,6 +723,39 @@ async function renderLibrary() {
 function empty(name, title, text) {
   return el('div', { className: 'empty' }, el('div', { className: 'big-icon' }, icon(name)), el('h2', { textContent: title }), el('p', { textContent: text }));
 }
+// ---------- Creator / site profile (like an Instagram profile) ----------
+async function openProfile(sourceId) {
+  if (!sourceId) return;
+  $('#profile-body').replaceChildren(el('p', { className: 'muted', textContent: 'Loading…' }));
+  openSheet('#profile-sheet');
+  let p;
+  try { p = await api(`/api/source/${encodeURIComponent(sourceId)}`); }
+  catch { return $('#profile-body').replaceChildren(el('p', { className: 'muted', textContent: 'Couldn’t load this profile.' })); }
+  const fmt = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : String(n));
+  const avatar = p.thumb
+    ? el('img', { className: 'ava big', src: p.thumb, alt: '', referrerPolicy: 'no-referrer', onerror() { this.replaceWith(el('span', { className: 'ava big', textContent: initial(p.title) })); } })
+    : el('span', { className: 'ava big', textContent: initial(p.title) });
+  const stats = [`${p.items.length} ${p.kind === 'channel' ? 'videos' : 'posts'} on Curio`, p.subscribers ? `${fmt(p.subscribers)} subscribers` : null].filter(Boolean).join(' · ');
+  const tile = (it) => {
+    const b = el('button', { className: `tile ${it.kind}`, aria: { label: it.title } });
+    if (it.kind === 'video') b.style.backgroundImage = `url(https://i.ytimg.com/vi/${encodeURIComponent(it.id)}/hqdefault.jpg)`;
+    else if (it.image) b.style.backgroundImage = `url("${it.image.replace(/"/g, '%22')}")`;
+    else b.append(el('span', { textContent: it.title || (it.text || '').slice(0, 80) }));
+    if (it.kind === 'video') b.append(icon('play', 'sm'));
+    b.onclick = () => openViewer(it, it.id);
+    return b;
+  };
+  $('#profile-body').replaceChildren(
+    el('div', { className: 'profile-head' }, avatar,
+      el('div', { className: 'grow' },
+        el('h2', { id: 'profile-name', className: 'truncate', textContent: p.title }),
+        el('div', { className: 'muted small', textContent: p.topicName }),
+        el('div', { className: 'muted small', textContent: stats }))),
+    el('a', { className: 'primary wide follow-btn', href: p.url, target: '_blank', rel: 'noopener' },
+      p.kind === 'channel' ? 'Open channel on YouTube' : 'Visit site', icon('external-link', 'sm')),
+    p.items.length ? el('div', { className: 'tile-grid' }, ...p.items.map(tile)) : el('p', { className: 'muted', textContent: 'Nothing here yet.' }));
+}
+
 function openViewer(item, itemId) {
   $('#viewer-title').textContent = item.title || item.source;
   const share = el('button', { className: 'ghost with-icon' }, icon('send', 'sm'), 'Share');

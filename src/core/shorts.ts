@@ -20,3 +20,10 @@ export function classifyVideo(v: { duration: string; embedWidth?: number; embedH
   const secs = parseDuration(v.duration);
   return allowLong && secs >= 120 && secs <= 1200 ? 'long' : null;
 }
+
+// Shorts often link the full video in their description. Returns the first linked video that isn't itself.
+const YT_LINK = /(?:youtube\.com\/(?:watch\?(?:[^\s#]*&)?v=|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/g;
+export function fullVideoId(description: string | undefined, selfId: string): string | null {
+  for (const m of (description ?? '').matchAll(YT_LINK)) if (m[1] !== selfId) return m[1];
+  return null;
+}

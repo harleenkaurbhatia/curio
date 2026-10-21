@@ -80,6 +80,22 @@ const POST_SCHEMA = {
   additionalProperties: false,
 };
 
+const THOUGHT_SYSTEM = `A person wrote a private note while using a knowledge feed. Decide if it says anything about what they want in their feed.
+item: -1 if they dislike or distrust the item they were looking at (boring, clickbait, wrong, not for me), 1 if they clearly loved it and want more like it, else 0.
+more / less: ids of topics from the list they ask to see more or less of ("too much news" means less of the news topics). Only use ids from the list.
+Most notes are just ideas or reminders: then item is 0 and both lists are empty.`;
+
+const THOUGHT_SCHEMA = {
+  type: 'object',
+  properties: {
+    item: { type: 'integer', enum: [-1, 0, 1] },
+    more: { type: 'array', items: { type: 'string' } },
+    less: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['item', 'more', 'less'],
+  additionalProperties: false,
+};
+
 export class Curator {
   private client: Anthropic;
   constructor(apiKey: string, private calls: CallLimit) {
@@ -102,6 +118,19 @@ export class Curator {
     } as Anthropic.MessageCreateParamsNonStreaming);
     if (res.stop_reason === 'refusal') return [];
     return parseScores(textOf(res), group.map((c) => c.id));
+  }
+
+  // Returns raw JSON; parseThoughtIntent validates it.
+  async readThought(note: string, about: { title: string; source: string; topic: string } | null, topics: { id: string; name: string }[]): Promise<string> {
+    this.calls.take();
+    const res = await this.client.messages.create({
+      model: MODEL,
+      max_tokens: 300,
+      system: THOUGHT_SYSTEM,
+      output_config: { effort: 'low', format: { type: 'json_schema', schema: THOUGHT_SCHEMA } },
+      messages: [{ role: 'user', content: JSON.stringify({ note, looking_at: about, topics }) }],
+    } as Anthropic.MessageCreateParamsNonStreaming);
+    return res.stop_reason === 'refusal' ? '' : textOf(res);
   }
 
   async screenPosts(group: PostForReview[]): Promise<PostScore[]> {

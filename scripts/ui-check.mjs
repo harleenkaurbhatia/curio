@@ -53,6 +53,24 @@ const kinds = await page.$$eval('#feed .slide:not(.end)', (s) => s.map((x) => (x
 check(kinds.includes('post') && kinds.includes('video'), `feed mixes videos and reads (${kinds.join(',')})`);
 check(kinds.every((k, i) => i === 0 || !(k === 'post' && kinds[i - 1] === 'post')), 'no two reads back to back');
 
+// Sound toggle and creator profile on the first video.
+{
+  await page.evaluate((i) => { const f = document.querySelector('#feed'); f.scrollTo({ top: i * f.clientHeight }); }, kinds.indexOf('video'));
+  await page.waitForSelector('#mute-btn:not([hidden])');
+  check(await page.isVisible('#mute-btn'), 'video shows a sound button');
+  await page.click('#mute-btn');
+  check((await page.getAttribute('#mute-btn', 'aria-label')) === 'Mute', 'sound button turns sound on');
+  await page.click('#mute-btn');
+  check((await page.getAttribute('#mute-btn', 'aria-label')) === 'Turn sound on', 'sound button mutes again');
+}
+await page.locator('#feed .slide.video .who').first().click();
+await page.waitForSelector('#profile-sheet:not([hidden]) .profile-head');
+check(await page.locator('#profile-sheet .tile').count() >= 1, 'tapping a creator opens their profile with their videos');
+check((await page.getAttribute('#profile-sheet .follow-btn', 'href')).startsWith('https://www.youtube.com/channel/'), 'profile links to the YouTube channel');
+await shot('04b-profile');
+await page.mouse.click(20, 20); // the strip of scrim above the tall sheet
+await page.waitForSelector('#profile-sheet', { state: 'hidden' });
+
 const readIdx = kinds.indexOf('post');
 const scrollTo = (i) => page.evaluate((i) => { const f = document.querySelector('#feed'); f.scrollTo({ top: i * f.clientHeight }); }, i);
 await scrollTo(readIdx);

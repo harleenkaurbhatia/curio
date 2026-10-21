@@ -1,5 +1,5 @@
 import { CallLimit, CallLimitReached, QuotaBudget, QuotaExceeded } from '../core/quota';
-import { classifyVideo, parseDuration } from '../core/shorts';
+import { classifyVideo, parseDuration, fullVideoId } from '../core/shorts';
 import { YouTube } from '../youtube';
 import { Curator, type ChannelForReview } from '../llm';
 import { Repo, type NewVideo } from '../db';
@@ -141,7 +141,8 @@ async function fetchNewShorts(repo: Repo, yt: YouTube, now: number): Promise<num
         const d = details.get(u.id);
         const type = d && classifyVideo(d, longOk.has(c.topic_id));
         return type
-          ? [{ id: u.id, channel_id: c.id, topic_id: c.topic_id, title: u.title, published_at: u.publishedAt, duration_s: parseDuration(d.duration), vertical: type === 'short' }]
+          ? [{ id: u.id, channel_id: c.id, topic_id: c.topic_id, title: u.title, published_at: u.publishedAt, duration_s: parseDuration(d.duration), vertical: type === 'short',
+              full_id: type === 'short' ? fullVideoId(u.description, u.id) : null }]
           : [];
       });
       await repo.insertVideos(keep);

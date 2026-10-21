@@ -23,3 +23,16 @@ describe('classifyVideo', () => {
   it('drops very long videos even when allowed', () => expect(classifyVideo({ ...wide, duration: 'PT20M1S' }, true)).toBeNull());
   it('drops clips under 2 min that are not Shorts', () => expect(classifyVideo({ ...wide, duration: 'PT90S' }, true)).toBeNull());
 });
+
+import { fullVideoId } from '../src/core/shorts';
+describe('fullVideoId', () => {
+  it('finds a linked full video', () => {
+    expect(fullVideoId('Full video: https://youtu.be/dQw4w9WgXcQ #shorts', 'abcdefghijk')).toBe('dQw4w9WgXcQ');
+    expect(fullVideoId('watch https://www.youtube.com/watch?si=x&v=dQw4w9WgXcQ', 'abcdefghijk')).toBe('dQw4w9WgXcQ');
+  });
+  it('ignores shorts links, itself and empty text', () => {
+    expect(fullVideoId('https://youtube.com/shorts/dQw4w9WgXcQ', 'x')).toBeNull();
+    expect(fullVideoId('https://youtu.be/abcdefghijk', 'abcdefghijk')).toBeNull();
+    expect(fullVideoId(undefined, 'x')).toBeNull();
+  });
+});

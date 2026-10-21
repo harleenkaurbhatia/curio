@@ -5,6 +5,9 @@ import { guestEmail, isGuest } from './core/guest';
 import { Repo, type Mode, type Snapshot, type User } from './db';
 import { buildFeed } from './core/ranking';
 import { applyFeedback } from './core/feedback';
+import { applyThoughtIntent, parseThoughtIntent } from './core/thoughts';
+import { Curator } from './llm';
+import { CallLimit } from './core/quota';
 import { computeInsights } from './core/insights';
 import { refreshVideos, type Env } from './jobs/refresh';
 import { refreshReads } from './jobs/reads';
@@ -22,6 +25,19 @@ const slow = () => new Promise((r) => setTimeout(r, 600)); // blunt password gue
 // New follows shouldn't wait for the next cron run: start finding creators right away.
 function kickRefresh(c: { env: Env; executionCtx: { waitUntil(p: Promise<unknown>): void } }) {
   c.executionCtx.waitUntil(refreshVideos(c.env).catch((e) => console.log('kick', String(e))));
+}
+
+// A thought can say "less of this" or "more science": read it and nudge that person's weights.
+async function steerFromThought(env: Env, repo: Repo, uid: number, note: string, raw: any) {
+  if (!env.ANTHROPIC_API_KEY) return;
+  const topics = (await repo.topics()).map((t) => ({ id: String(t.id), name: t.name }));
+  const on = raw && raw.topicId && raw.sourceId ? { topic: String(raw.topicId), channelId: String(raw.sourceId) } : null;
+  const about = raw ? { title: String(raw.title ?? '').slice(0, 200), source: String(raw.source ?? ''), topic: String(raw.topicName ?? '') } : null;
+  const intent = parseThoughtIntent(await new Curator(env.ANTHROPIC_API_KEY, new CallLimit(1)).readThought(note, about, topics), new Set(topics.map((t) => t.id)));
+  if (!intent.item && !intent.more.length && !intent.less.length) return;
+  const w = applyThoughtIntent(await repo.loadWeights(uid), intent, on);
+  const rated = on && intent.item ? on : null;
+  await repo.saveWeightKeys(uid, w, [...intent.more, ...intent.less, ...(rated ? [rated.topic] : [])], rated ? [rated.channelId] : []);
 }
 
 app.use('/api/*', async (c, next) => {
@@ -248,6 +264,7 @@ app.get('/api/feed', async (c) => {
       id: i.id, kind: i.kind, title: i.title, url: i.url, source: i.source, sourceId: i.channelId, sourceKind: i.sourceKind ?? 'youtube',
       topicId: i.topic, topicName: i.topicName, publishedAt: i.publishedAt,
       text: i.text, image: i.image, author: i.author, hook: i.hook,
+      vertical: i.vertical, fullUrl: i.fullUrl, hasFull: i.hasFull,
     })),
   });
 });
@@ -300,6 +317,11 @@ function snapshot(raw: any): Snapshot | null {
   };
 }
 
+app.get('/api/source/:id', async (c) => {
+  const p = await c.get('repo').sourceProfile(c.req.param('id'));
+  return p ? c.json(p) : c.json({ error: 'Not found' }, 404);
+});
+
 app.get('/api/library', async (c) => c.json(await c.get('repo').library(c.get('user').id)));
 
 app.post('/api/library/:list', async (c) => {
@@ -323,7 +345,9 @@ app.post('/api/notes', async (c) => {
   const { text, itemId, item } = await c.req.json<{ text: string; itemId?: string; item?: unknown }>();
   const clean = String(text ?? '').trim().slice(0, 4000);
   if (!clean) return c.json({ error: 'Write or say something first' }, 400);
-  const id = await c.get('repo').addNote(c.get('user').id, clean, itemId ? String(itemId).slice(0, 300) : null, snapshot(item));
+  const repo = c.get('repo'), uid = c.get('user').id;
+  const id = await repo.addNote(uid, clean, itemId ? String(itemId).slice(0, 300) : null, snapshot(item));
+  c.executionCtx.waitUntil(steerFromThought(c.env, repo, uid, clean, item).catch((e) => console.log('thought', String(e))));
   return c.json({ ok: true, id });
 });
 

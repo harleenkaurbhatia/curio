@@ -73,6 +73,7 @@
           <button id="inbox-btn" class="icon-btn badge-host" aria-label="Reels sent to you on Instagram"><svg class="ic" aria-hidden="true"><use href="/icons.svg#send"/></svg><span id="inbox-badge" class="badge-dot" hidden></span></button>
         </span>
       </header>
+      <button id="mute-btn" class="mute-btn" aria-label="Turn sound on" hidden><svg class="ic" aria-hidden="true"><use href="/icons.svg#volume-x"/></svg></button>
       <div id="sound-hint" class="pill with-icon" hidden><svg class="ic sm" aria-hidden="true"><use href="/icons.svg#volume-x"/></svg>Tap for sound</div>
     </section>
 
@@ -166,7 +167,7 @@
   <section id="thought-sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="thought-title" hidden>
     <h2 id="thought-title">Your thought</h2>
     <p id="thought-context" class="muted small truncate"></p>
-    <textarea id="thought-text" rows="5" placeholder="An idea, a question, a connection…" aria-label="Your thought"></textarea>
+    <textarea id="thought-text" rows="5" placeholder="An idea, a question… or tell Curio what you want: “less news”, “more like this”, “not for me”" aria-label="Your thought"></textarea>
     <div class="row between">
       <div class="row" id="voice-controls">
         <button id="mic" class="mic" aria-label="Speak your thought" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="/icons.svg#mic"/></svg></button>
@@ -183,6 +184,9 @@
   <section id="install-sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="install-title" hidden>
     <h2 id="install-title">Install Curio</h2>
     <p id="install-steps" class="muted"></p>
+  </section>
+  <section id="profile-sheet" class="sheet tall" role="dialog" aria-modal="true" aria-labelledby="profile-name" hidden>
+    <div id="profile-body"></div>
   </section>
   <section id="share-sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="share-title" hidden>
     <h2 id="share-title">Share</h2>

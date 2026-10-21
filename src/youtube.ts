@@ -4,7 +4,7 @@ const BASE = 'https://www.googleapis.com/youtube/v3';
 
 export type SearchHit = { channelId: string; channelTitle: string };
 export type ChannelInfo = { id: string; title: string; thumb: string | null; uploads: string; subscribers: number; videoCount: number };
-export type PlaylistVideo = { id: string; title: string; publishedAt: number };
+export type PlaylistVideo = { id: string; title: string; description: string; publishedAt: number };
 export type VideoDetails = { id: string; duration: string; embedWidth?: number; embedHeight?: number };
 
 export class YouTube {
@@ -53,6 +53,7 @@ export class YouTube {
     return (data.items ?? []).map((i) => ({
       id: i.contentDetails.videoId,
       title: i.snippet.title,
+      description: i.snippet.description ?? '',
       publishedAt: Date.parse(i.contentDetails.videoPublishedAt ?? i.snippet.publishedAt),
     }));
   }

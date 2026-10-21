@@ -21,9 +21,9 @@ export type Feed = {
 };
 export type IgAccount = { ig_id: string; user_id: number; username: string | null; token: string; token_refreshed_at: number };
 export type IgSender = { ig_id: string; name: string | null; username: string | null; pic: string | null; fetched_at: number };
-export type NewVideo = { id: string; channel_id: string; topic_id: number; title: string; published_at: number; duration_s: number; vertical: boolean };
+export type NewVideo = { id: string; channel_id: string; topic_id: number; title: string; published_at: number; duration_s: number; vertical: boolean; full_id?: string | null };
 export type FeedItem = Candidate & {
-  kind: 'video' | 'post'; title: string; source: string; topicName: string; url: string; vertical?: boolean;
+  kind: 'video' | 'post'; title: string; source: string; topicName: string; url: string; vertical?: boolean; fullUrl?: string; hasFull?: boolean;
   text?: string; image?: string | null; author?: string | null; hook?: string | null; sourceKind?: string;
 };
 export type Snapshot = { kind: 'video' | 'post'; title: string; url: string; source: string; topicName: string; text?: string; image?: string | null };
@@ -270,9 +270,9 @@ export class Repo {
     if (!vs.length) return;
     const now = Date.now();
     await this.db.batch(vs.map((v) => this.db
-      .prepare(`INSERT OR IGNORE INTO videos (id, channel_id, topic_id, title, published_at, duration_s, vertical, added_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(v.id, v.channel_id, v.topic_id, v.title, v.published_at, v.duration_s, v.vertical ? 1 : 0, now)));
+      .prepare(`INSERT OR IGNORE INTO videos (id, channel_id, topic_id, title, published_at, duration_s, vertical, full_id, added_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(v.id, v.channel_id, v.topic_id, v.title, v.published_at, v.duration_s, v.vertical ? 1 : 0, v.full_id ?? null, now)));
   }
 
   // ---------- Feed ----------
@@ -281,7 +281,7 @@ export class Repo {
     const since = now - 21 * DAY;
     const langs = user.languages.split(',').filter(Boolean);
     const [videos, posts] = await Promise.all([
-      this.db.prepare(`SELECT v.id, v.title, v.channel_id AS source_id, v.published_at, v.vertical, c.title AS source, c.score,
+      this.db.prepare(`SELECT v.id, v.title, v.channel_id AS source_id, v.published_at, v.vertical, v.full_id, c.title AS source, c.score,
                               t.id AS topic_id, t.name AS topic_name, t.mode
                        FROM videos v
                        JOIN channels c ON c.id = v.channel_id AND c.status = 'active'
@@ -310,7 +310,9 @@ export class Repo {
     });
     return [
       ...videos.results.map((r) => ({ ...common(r), kind: 'video' as const, channelScore: r.score ?? 0.6, vertical: !!r.vertical,
-        url: r.vertical ? `https://www.youtube.com/shorts/${r.id}` : `https://www.youtube.com/watch?v=${r.id}` })),
+        url: r.vertical ? `https://www.youtube.com/shorts/${r.id}` : `https://www.youtube.com/watch?v=${r.id}`,
+        // Where "View full video" goes: the full video a Short links to, else this video on YouTube.
+        fullUrl: `https://www.youtube.com/watch?v=${r.full_id ?? r.id}`, hasFull: !!r.full_id })),
       ...posts.results.map((r) => ({
         ...common(r), kind: 'post' as const,
         // A great post from an average source still deserves a chance.
@@ -365,6 +367,13 @@ export class Repo {
     ]);
   }
 
+  async saveWeightKeys(userId: number, w: Weights, topics: string[], channels: string[]) {
+    const put = 'INSERT OR REPLACE INTO weights (user_id, kind, key, value) VALUES (?, ?, ?, ?)';
+    const rows = [...topics.map((k) => this.db.prepare(put).bind(userId, 'topic', k, w.topic[k])),
+      ...channels.map((k) => this.db.prepare(put).bind(userId, 'channel', k, w.channel[k]))];
+    if (rows.length) await this.db.batch(rows);
+  }
+
   // ---------- Creators (per-user hide) ----------
   async sourcesFor(userId: number) {
     return (await this.db.prepare(`
@@ -405,6 +414,38 @@ export class Repo {
       thoughts: notes.results.map((n) => ({ id: n.id, itemId: n.item_id, text: n.text, at: n.at, item: parse(n.snapshot) })),
     };
   }
+  // A creator's or site's page: who they are and their latest items, like an Instagram profile.
+  async sourceProfile(id: string) {
+    const ch = await this.db.prepare(`SELECT c.id, c.title, c.thumb, c.sample_titles, t.name AS topic_name FROM channels c
+                                      JOIN topics t ON t.id = c.topic_id WHERE c.id = ?`).bind(id).first<any>();
+    if (ch) {
+      let subscribers: number | null = null;
+      try { subscribers = Number(JSON.parse(ch.sample_titles)?.subscribers) || null; } catch { /* old format */ }
+      const vids = (await this.db.prepare(`SELECT id, title, published_at, vertical, full_id FROM videos WHERE channel_id = ?
+                                           ORDER BY published_at DESC LIMIT 30`).bind(id).all<any>()).results;
+      return {
+        kind: 'channel' as const, id, title: ch.title, thumb: ch.thumb, topicName: ch.topic_name, subscribers,
+        url: `https://www.youtube.com/channel/${encodeURIComponent(id)}`,
+        items: vids.map((v) => ({
+          id: v.id, kind: 'video' as const, title: v.title, source: ch.title, topicName: ch.topic_name, publishedAt: v.published_at,
+          vertical: !!v.vertical, url: v.vertical ? `https://www.youtube.com/shorts/${v.id}` : `https://www.youtube.com/watch?v=${v.id}`,
+        })),
+      };
+    }
+    const f = await this.db.prepare(`SELECT f.id, f.kind, f.title, f.url, f.thumb, t.name AS topic_name FROM feeds f
+                                     JOIN topics t ON t.id = f.topic_id WHERE f.id = ?`).bind(id).first<any>();
+    if (!f) return null;
+    const posts = (await this.db.prepare(`SELECT id, title, text, url, image, published_at FROM posts WHERE feed_id = ? AND status = 'ok'
+                                          ORDER BY published_at DESC LIMIT 30`).bind(id).all<any>()).results;
+    let site = f.url;
+    try { site = f.kind === 'hn' ? 'https://news.ycombinator.com' : new URL(f.url).origin; } catch { /* keep */ }
+    return {
+      kind: 'feed' as const, id, title: f.title, thumb: f.thumb, topicName: f.topic_name, subscribers: null, url: site,
+      items: posts.map((p) => ({ id: p.id, kind: 'post' as const, title: p.title, text: p.text, image: p.image, url: p.url,
+        source: f.title, topicName: f.topic_name, publishedAt: p.published_at })),
+    };
+  }
+
   async addNote(userId: number, text: string, itemId: string | null, snap: Snapshot | null) {
     const r = await this.db.prepare('INSERT INTO notes (user_id, item_id, snapshot, text, at) VALUES (?, ?, ?, ?, ?) RETURNING id')
       .bind(userId, itemId, snap ? JSON.stringify(snap) : null, text, Date.now()).first<{ id: number }>();
