@@ -49,7 +49,13 @@ await page.waitForSelector('#app:not([hidden]) .slide:not(.end)');
 await page.waitForTimeout(2500);
 await shot('04-feed');
 check(await noHScroll(), 'feed: no horizontal scroll at 390px');
-const kinds = await page.$$eval('#feed .slide:not(.end)', (s) => s.map((x) => (x.classList.contains('read') ? 'post' : 'video')));
+const kindsNow = () => page.$$eval('#feed .slide:not(.end)', (s) => s.map((x) => (x.classList.contains('read') ? 'post' : 'video')));
+// Quality decides the order now, so a read may come after the first batch: scroll until one shows up.
+for (let i = 0; i < 24 && !(await kindsNow()).includes('post'); i++) {
+  await page.evaluate((i) => { const f = document.querySelector('#feed'); f.scrollTo({ top: i * f.clientHeight }); }, i);
+  await page.waitForTimeout(250);
+}
+const kinds = await kindsNow();
 check(kinds.includes('post') && kinds.includes('video'), `feed mixes videos and reads (${kinds.join(',')})`);
 check(kinds.every((k, i) => i === 0 || !(k === 'post' && kinds[i - 1] === 'post')), 'no two reads back to back');
 

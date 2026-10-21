@@ -1,5 +1,6 @@
+import { curatedScore } from '../core/channelScores';
 import { CallLimit, CallLimitReached, QuotaBudget, QuotaExceeded } from '../core/quota';
-import { classifyVideo, parseDuration, fullVideoId } from '../core/shorts';
+import { classifyVideo, parseDuration, fullVideoId, likeRatio } from '../core/shorts';
 import { YouTube } from '../youtube';
 import { Curator, type ChannelForReview } from '../llm';
 import { Repo, type NewVideo } from '../db';
@@ -38,7 +39,9 @@ export async function refreshVideos(env: Env, now = Date.now()): Promise<Refresh
   try {
     await discover(repo, yt, now, report);
     try {
-      Object.assign(report, await scorePending(repo, new Curator(env.ANTHROPIC_API_KEY, calls), now));
+      const curator = new Curator(env.ANTHROPIC_API_KEY, calls);
+      Object.assign(report, await scorePending(repo, curator, now));
+      await scoreCurated(repo, yt, curator, now);
     } catch (e) {
       if (e instanceof QuotaExceeded || e instanceof CallLimitReached) throw e;
       // Claude unavailable: keep fetching from already-approved creators.
@@ -89,6 +92,24 @@ async function discover(repo: Repo, yt: YouTube, now: number, report: RefreshRep
       report.discovered++; // counted as we go, so a run cut short still reports it
     }
   }
+}
+
+// Hand-picked creators are scored by Claude too, from the videos we already have (no extra YouTube cost
+// beyond one call for subscriber counts). They stay active; the score only moves them up or down.
+async function scoreCurated(repo: Repo, yt: YouTube, curator: Curator, now: number) {
+  const waiting = (await repo.channels('active')).filter((c) => c.reason === 'Curated (to score)');
+  const titles = await repo.recentTitles(waiting.map((c) => c.id), 10);
+  // New creators wait until their first videos are fetched, so Claude has something to judge.
+  const todo = waiting.filter((c) => titles.get(c.id)?.length).slice(0, SCORE_GROUP);
+  if (!todo.length) return;
+  const [topics, infos] = await Promise.all([repo.topics(), yt.channels(todo.map((c) => c.id))]);
+  const topicName = new Map(topics.map((t) => [t.id, t.name]));
+  const subs = new Map(infos.map((i) => [i.id, i.subscribers]));
+  const scores = await curator.scoreChannels(todo.map((c) => ({
+    id: c.id, title: c.title, topic: topicName.get(c.topic_id) ?? '', subscribers: subs.get(c.id) ?? 0,
+    recentTitles: (titles.get(c.id) ?? []).map((v) => ({ title: v.title, daysAgo: Math.round((now - v.published_at) / DAY) })),
+  })));
+  await repo.saveCuratedScores(scores.map((s) => ({ id: s.id, score: curatedScore(s), language: s.language, reason: `Curated, scored: ${s.reason}` })));
 }
 
 async function scorePending(repo: Repo, curator: Curator, now: number) {
@@ -142,7 +163,7 @@ async function fetchNewShorts(repo: Repo, yt: YouTube, now: number): Promise<num
         const type = d && classifyVideo(d, longOk.has(c.topic_id));
         return type
           ? [{ id: u.id, channel_id: c.id, topic_id: c.topic_id, title: u.title, published_at: u.publishedAt, duration_s: parseDuration(d.duration), vertical: type === 'short',
-              full_id: type === 'short' ? fullVideoId(u.description, u.id) : null }]
+              full_id: type === 'short' ? fullVideoId(u.description, u.id) : null, like_ratio: likeRatio(d.views, d.likes) }]
           : [];
       });
       await repo.insertVideos(keep);

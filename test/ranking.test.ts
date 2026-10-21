@@ -133,3 +133,27 @@ describe('buildFeed with reads', () => {
     expect(buildFeed(pool, W, opts)).toHaveLength(3);
   });
 });
+
+import { likeFactor, postQuality } from '../src/core/ranking';
+describe('quality weighting', () => {
+  it('quality is cubed: 0.9 beats 0.6 by about 3.4x', () => {
+    const hi = baseScore(c('s', 'a', 1, { channelScore: 0.9 }), W, NOW);
+    const lo = baseScore(c('s', 'a', 1, { channelScore: 0.6 }), W, NOW);
+    expect(hi / lo).toBeCloseTo(3.375, 2);
+  });
+  it('like-to-view ratio is a small boost between 0.9x and 1.1x', () => {
+    expect(likeFactor(undefined)).toBe(1);
+    expect(likeFactor(0.035)).toBeCloseTo(1, 1);
+    expect(likeFactor(0.2)).toBeCloseTo(1.1);
+    expect(likeFactor(0.001)).toBeCloseTo(0.9);
+    const liked = baseScore(c('s', 'a', 1, { likeRatio: 0.2 }), W, NOW);
+    const plain = baseScore(c('s', 'a', 1), W, NOW);
+    expect(liked / plain).toBeCloseTo(1.1);
+  });
+  it('an article uses the lower of its own and its site score, lifted 0.1 onto the video scale', () => {
+    expect(postQuality(0.5, 0.9)).toBeCloseTo(0.6);
+    expect(postQuality(0.8, 0.6)).toBeCloseTo(0.7);
+    expect(postQuality(null, 0.85)).toBeCloseTo(0.95);
+    expect(postQuality(0.95, 0.98)).toBe(1);
+  });
+});

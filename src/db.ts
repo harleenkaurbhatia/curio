@@ -1,5 +1,5 @@
 import type { InboxItem } from './core/instagram';
-import type { Candidate, Weights } from './core/ranking';
+import { postQuality, type Candidate, type Weights } from './core/ranking';
 import type { View } from './core/insights';
 import type { RawPost } from './core/sources';
 
@@ -21,7 +21,7 @@ export type Feed = {
 };
 export type IgAccount = { ig_id: string; user_id: number; username: string | null; token: string; token_refreshed_at: number };
 export type IgSender = { ig_id: string; name: string | null; username: string | null; pic: string | null; fetched_at: number };
-export type NewVideo = { id: string; channel_id: string; topic_id: number; title: string; published_at: number; duration_s: number; vertical: boolean; full_id?: string | null };
+export type NewVideo = { id: string; channel_id: string; topic_id: number; title: string; published_at: number; duration_s: number; vertical: boolean; full_id?: string | null; like_ratio?: number | null };
 export type FeedItem = Candidate & {
   kind: 'video' | 'post'; title: string; source: string; topicName: string; url: string; vertical?: boolean; fullUrl?: string; hasFull?: boolean;
   text?: string; image?: string | null; author?: string | null; hook?: string | null; sourceKind?: string;
@@ -198,6 +198,22 @@ export class Repo {
       .prepare(`UPDATE channels SET score = ?, language = ?, reason = ?, status = ? WHERE id = ? AND status = 'pending'`)
       .bind(s.score, s.language, s.reason, s.accept ? 'active' : 'rejected', s.id)));
   }
+  async saveCuratedScores(scores: { id: string; score: number; language: string; reason: string }[]) {
+    if (!scores.length) return;
+    await this.db.batch(scores.map((s) => this.db.prepare('UPDATE channels SET score = ?, language = ?, reason = ? WHERE id = ?')
+      .bind(s.score, s.language, s.reason.slice(0, 300), s.id)));
+  }
+  async recentTitles(channelIds: string[], perChannel: number) {
+    const out = new Map<string, { title: string; published_at: number }[]>();
+    if (!channelIds.length) return out;
+    const rows = (await this.db.prepare(`SELECT channel_id, title, published_at FROM videos WHERE channel_id IN (${placeholders(channelIds.length)})
+                                         ORDER BY published_at DESC`).bind(...channelIds).all<any>()).results;
+    for (const r of rows) {
+      const list = out.get(r.channel_id) ?? [];
+      if (list.length < perChannel) out.set(r.channel_id, [...list, { title: r.title, published_at: r.published_at }]);
+    }
+    return out;
+  }
   async markFetched(id: string, at: number) {
     await this.db.prepare('UPDATE channels SET last_fetched_at = ? WHERE id = ?').bind(at, id).run();
   }
@@ -270,9 +286,9 @@ export class Repo {
     if (!vs.length) return;
     const now = Date.now();
     await this.db.batch(vs.map((v) => this.db
-      .prepare(`INSERT OR IGNORE INTO videos (id, channel_id, topic_id, title, published_at, duration_s, vertical, full_id, added_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .bind(v.id, v.channel_id, v.topic_id, v.title, v.published_at, v.duration_s, v.vertical ? 1 : 0, v.full_id ?? null, now)));
+      .prepare(`INSERT OR IGNORE INTO videos (id, channel_id, topic_id, title, published_at, duration_s, vertical, full_id, like_ratio, added_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(v.id, v.channel_id, v.topic_id, v.title, v.published_at, v.duration_s, v.vertical ? 1 : 0, v.full_id ?? null, v.like_ratio ?? null, now)));
   }
 
   // ---------- Feed ----------
@@ -281,7 +297,7 @@ export class Repo {
     const since = now - 21 * DAY;
     const langs = user.languages.split(',').filter(Boolean);
     const [videos, posts] = await Promise.all([
-      this.db.prepare(`SELECT v.id, v.title, v.channel_id AS source_id, v.published_at, v.vertical, v.full_id, c.title AS source, c.score,
+      this.db.prepare(`SELECT v.id, v.title, v.channel_id AS source_id, v.published_at, v.vertical, v.full_id, v.like_ratio, c.title AS source, c.score,
                               t.id AS topic_id, t.name AS topic_name, t.mode
                        FROM videos v
                        JOIN channels c ON c.id = v.channel_id AND c.status = 'active'
@@ -309,14 +325,13 @@ export class Repo {
       title: r.title, source: r.source, topicName: r.topic_name,
     });
     return [
-      ...videos.results.map((r) => ({ ...common(r), kind: 'video' as const, channelScore: r.score ?? 0.6, vertical: !!r.vertical,
+      ...videos.results.map((r) => ({ ...common(r), kind: 'video' as const, channelScore: r.score ?? 0.6, likeRatio: r.like_ratio ?? undefined, vertical: !!r.vertical,
         url: r.vertical ? `https://www.youtube.com/shorts/${r.id}` : `https://www.youtube.com/watch?v=${r.id}`,
         // Where "View full video" goes: the full video a Short links to, else this video on YouTube.
         fullUrl: `https://www.youtube.com/watch?v=${r.full_id ?? r.id}`, hasFull: !!r.full_id })),
       ...posts.results.map((r) => ({
         ...common(r), kind: 'post' as const,
-        // A great post from an average source still deserves a chance.
-        channelScore: Math.max(r.score ?? 0.6, r.post_score ?? 0.6),
+        channelScore: postQuality(r.post_score, r.score),
         url: r.url, text: r.text, image: r.image, author: r.author, hook: r.hook, sourceKind: r.source_kind,
       })),
     ];

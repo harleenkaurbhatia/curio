@@ -36,3 +36,12 @@ describe('fullVideoId', () => {
     expect(fullVideoId(undefined, 'x')).toBeNull();
   });
 });
+
+import { likeRatio } from '../src/core/shorts';
+describe('likeRatio', () => {
+  it('is likes per view', () => expect(likeRatio(10_000, 400)).toBeCloseTo(0.04));
+  it('is unknown with too few views or hidden likes', () => {
+    expect(likeRatio(50, 10)).toBeNull();
+    expect(likeRatio(10_000, undefined)).toBeNull();
+  });
+});

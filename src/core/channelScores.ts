@@ -21,3 +21,9 @@ export function parseScores(raw: string, askedIds: string[]): ChannelScore[] {
   }
   return out;
 }
+
+// Hand-picked creators stay in the catalog whatever Claude says; a hard reject just sinks them.
+export function curatedScore(s: ChannelScore): number {
+  const rejected = REJECT_REASONS.some((r) => s.reason.startsWith(`${r}:`));
+  return rejected ? Math.min(s.score, 0.3) : s.score;
+}

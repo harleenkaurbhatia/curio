@@ -5,7 +5,7 @@ const BASE = 'https://www.googleapis.com/youtube/v3';
 export type SearchHit = { channelId: string; channelTitle: string };
 export type ChannelInfo = { id: string; title: string; thumb: string | null; uploads: string; subscribers: number; videoCount: number };
 export type PlaylistVideo = { id: string; title: string; description: string; publishedAt: number };
-export type VideoDetails = { id: string; duration: string; embedWidth?: number; embedHeight?: number };
+export type VideoDetails = { id: string; duration: string; embedWidth?: number; embedHeight?: number; views?: number; likes?: number };
 
 export class YouTube {
   constructor(private key: string, private budget: QuotaBudget, private calls: CallLimit) {}
@@ -63,11 +63,13 @@ export class YouTube {
     const out: VideoDetails[] = [];
     for (let i = 0; i < ids.length; i += 50) {
       const data = await this.get<{ items?: any[] }>('videos', 'videos', {
-        part: 'contentDetails,player', id: ids.slice(i, i + 50).join(','), maxHeight: '640',
+        part: 'contentDetails,player,statistics', id: ids.slice(i, i + 50).join(','), maxHeight: '640',
       });
       for (const v of data.items ?? []) {
         out.push({ id: v.id, duration: v.contentDetails.duration, embedWidth: Number(v.player?.embedWidth) || undefined,
-          embedHeight: Number(v.player?.embedHeight) || undefined });
+          embedHeight: Number(v.player?.embedHeight) || undefined,
+          views: Number(v.statistics?.viewCount) || undefined,
+          likes: v.statistics?.likeCount != null ? Number(v.statistics.likeCount) : undefined });
       }
     }
     return out;

@@ -23,6 +23,8 @@ Criteria:
 Hard rejects (set reject_reason): ${REJECT_REASONS.join(', ')}.
 lifestyle_flex = luxury, "day in my life", flaunting wealth/success, motivational hustle, even if it claims to be about startups.
 reposts = compilation/clip channels re-uploading others' content.
+For the topic "Stand-up comedy", judge humour and craft instead of knowledge: original stand-up sets and clips by real comedians score high.
+Reject reposts/compilations of other people's sets, rage_bait, and crude shock or insult-only content (use low_credibility for that).
 language: "en", "hi" or "hinglish". summary: under 12 words on why.`;
 
 const SCHEMA = {

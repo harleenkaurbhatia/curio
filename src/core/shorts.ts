@@ -27,3 +27,9 @@ export function fullVideoId(description: string | undefined, selfId: string): st
   for (const m of (description ?? '').matchAll(YT_LINK)) if (m[1] !== selfId) return m[1];
   return null;
 }
+
+// Likes per view. Unknown below 200 views (too noisy) or when the creator hides likes.
+export function likeRatio(views: number | undefined, likes: number | undefined): number | null {
+  if (!views || views < 200 || likes == null) return null;
+  return likes / views;
+}

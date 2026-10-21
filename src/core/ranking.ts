@@ -6,6 +6,7 @@ export type Candidate = {
   publishedAt: number; // ms epoch
   channelScore: number; // 0–1 quality from Claude
   kind?: 'video' | 'post'; // posts are text reads (Bluesky, HN, newsletters)
+  likeRatio?: number; // YouTube likes / views when we fetched it
 };
 export type Weights = { topic: Record<string, number>; channel: Record<string, number> };
 
@@ -24,7 +25,23 @@ export function isFresh(c: Candidate, now: number): boolean {
 export function baseScore(c: Candidate, w: Weights, now: number): number {
   const age = Math.max(0, now - c.publishedAt);
   const freshness = 0.5 ** (age / (c.news ? HALF_LIFE.news : HALF_LIFE.other));
-  return (w.topic[c.topic] ?? 1) * (w.channel[c.channelId] ?? 1) * (0.5 + c.channelScore) * freshness;
+  // Quality is cubed so it outweighs everything else: 0.9 beats 0.6 by ~3.4x.
+  return (w.topic[c.topic] ?? 1) * (w.channel[c.channelId] ?? 1) * c.channelScore ** 3 * likeFactor(c.likeRatio) * freshness;
+}
+
+// A typical video gets ~3.5% likes per view. 4x better or worse moves the score by at most ±10%.
+const TYPICAL_LIKES = 0.035;
+export function likeFactor(ratio: number | undefined): number {
+  if (!ratio || ratio <= 0) return ratio === 0 ? 0.9 : 1;
+  return 1 + 0.1 * Math.max(-1, Math.min(1, Math.log(ratio / TYPICAL_LIKES) / Math.log(4)));
+}
+
+// A weak article can't ride on its site's reputation.
+// Claude scores articles ~0.1 lower than channels for the same quality (live averages 0.57 vs 0.68, 2026-10-21),
+// so articles are lifted 0.1 to compete fairly once quality is cubed.
+const POST_CALIBRATION = 0.1;
+export function postQuality(post: number | null | undefined, source: number | null | undefined): number {
+  return Math.min(1, Math.min(post ?? source ?? 0.6, source ?? post ?? 0.6) + POST_CALIBRATION);
 }
 
 export type FeedOptions = {
