@@ -12,6 +12,16 @@
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
+  <!-- ===== Install gate: Curio only runs as an installed app ===== -->
+  <section id="install-gate" class="screen center" hidden>
+    <img src="/icon.svg" alt="" width="64" height="64" class="logo">
+    <h1 class="brand big">Curio</h1>
+    <p class="muted">Short videos and reads that make you smarter.<br>No friends' stories. No like counts.</p>
+    <button class="install-btn primary wide">Install Curio</button>
+    <p id="gate-steps" class="muted small"></p>
+    <button id="gate-browser" class="link muted">Continue in browser</button>
+  </section>
+
   <!-- ===== Sign in / up ===== -->
   <section id="auth" class="screen center" hidden>
     <img src="/icon.svg" alt="" width="64" height="64" class="logo">

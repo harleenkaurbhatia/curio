@@ -77,7 +77,7 @@ function toast(msg) {
 }
 
 function showOnly(id) {
-  for (const s of ['auth', 'onboarding', 'app', 'summary']) $(`#${s}`).hidden = s !== id;
+  for (const s of ['install-gate', 'auth', 'onboarding', 'app', 'summary']) $(`#${s}`).hidden = s !== id;
 }
 
 // ---------- Install (PWA) ----------
@@ -87,7 +87,10 @@ window.addEventListener('beforeinstallprompt', (e) => {
   installPrompt = e;
   $$('.install-btn').forEach((b) => (b.hidden = false));
 });
-window.addEventListener('appinstalled', () => { $$('.install-btn').forEach((b) => (b.hidden = true)); toast('Curio installed'); });
+window.addEventListener('appinstalled', () => {
+  $$('.install-btn').forEach((b) => (b.hidden = true));
+  $('#gate-steps').textContent = 'Installed. Open Curio from your home screen.';
+});
 // Always offer it outside the installed app: iOS and in-app browsers never fire beforeinstallprompt.
 const installed = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 if (!installed) $$('.install-btn').forEach((b) => (b.hidden = false));
@@ -904,4 +907,13 @@ async function boot(retried = false) {
 }
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
-boot();
+// The front screen asks people to install. Local development skips it.
+const devHost = ['localhost', '127.0.0.1'].includes(location.hostname);
+// Shown once per browser visit; "Continue in browser" lets people try it first.
+const gateSkipped = () => { try { return sessionStorage.getItem('curio.browser') === '1'; } catch { return false; } };
+$('#gate-browser').onclick = () => { try { sessionStorage.setItem('curio.browser', '1'); } catch {} boot(); };
+if (installed || devHost || gateSkipped()) boot();
+else {
+  showOnly('install-gate');
+  $('#gate-steps').textContent = installSteps();
+}
